@@ -34,7 +34,15 @@ export default defineNuxtConfig({
       description: 'Personal operating system for actions, skills, properties, objectives and calendar planning.',
       theme_color: '#111827',
       background_color: '#ffffff',
-      display: 'standalone'
+      display: 'standalone',
+      icons: [
+        {
+          src: '/pwa-icon.svg',
+          sizes: '512x512',
+          type: 'image/svg+xml',
+          purpose: 'any maskable'
+        }
+      ]
     }
   }
 })
