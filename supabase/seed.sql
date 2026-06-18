@@ -1,0 +1,2 @@
+-- Local seed data for Supabase.
+-- Keep this file in version control so the local backend can be rebuilt from git.

@@ -1,0 +1,46 @@
+{
+  "name": "life-app",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "nuxt build",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio",
+    "supabase:start": "supabase start",
+    "supabase:stop": "supabase stop",
+    "supabase:status": "supabase status",
+    "supabase:db-reset": "supabase db reset",
+    "dev": "nuxt dev",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
+  "dependencies": {
+    "@azure/msal-node": "^5.2.4",
+    "@fullcalendar/core": "^6.1.20",
+    "@fullcalendar/daygrid": "^6.1.20",
+    "@fullcalendar/interaction": "^6.1.20",
+    "@fullcalendar/rrule": "^6.1.20",
+    "@fullcalendar/timegrid": "^6.1.20",
+    "@fullcalendar/vue3": "^6.1.20",
+    "@microsoft/microsoft-graph-client": "^3.0.7",
+    "@nuxtjs/supabase": "^2.0.9",
+    "@vite-pwa/nuxt": "^1.1.1",
+    "drizzle-orm": "^0.45.2",
+    "googleapis": "^173.0.0",
+    "nuxt": "4.3.1",
+    "postgres": "^3.4.9",
+    "rrule": "^2.8.1",
+    "vue": "^3.5.38",
+    "vue-router": "^5.1.0",
+    "ws": "^8.21.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.1",
+    "drizzle-kit": "^0.31.10"
+  }
+}
