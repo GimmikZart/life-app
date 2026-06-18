@@ -210,7 +210,7 @@ async function answerInvite(calendar: CalendarItem, status: 'accepted' | 'declin
       >
         <div>
           <strong>{{ invite.name }}</strong>
-          <span>{{ invite.type }} · {{ invite.myPermission }}</span>
+          <span>{{ invite.type }} - {{ invite.myPermission }}</span>
         </div>
         <div class="inline-actions">
           <button class="button button--primary" :disabled="isSubmitting" @click="answerInvite(invite, 'accepted')">
@@ -276,7 +276,7 @@ async function answerInvite(calendar: CalendarItem, status: 'accepted' | 'declin
           <span class="calendar-card__color" aria-hidden="true" />
           <div>
             <h3>{{ calendar.name }}</h3>
-            <p>{{ calendar.type }} · {{ calendar.myPermission }}</p>
+            <p>{{ calendar.type }} - {{ calendar.myPermission }}</p>
           </div>
         </div>
 
@@ -346,7 +346,7 @@ async function answerInvite(calendar: CalendarItem, status: 'accepted' | 'declin
             >
               <div>
                 <strong>{{ member.name || member.email }}</strong>
-                <span>{{ member.email }} · {{ member.status }}</span>
+                <span>{{ member.email }} - {{ member.status }}</span>
               </div>
 
               <div class="member-row__actions">
@@ -374,6 +374,8 @@ async function answerInvite(calendar: CalendarItem, status: 'accepted' | 'declin
         </section>
       </article>
     </section>
+
+    <CalendarEventsPanel :calendars="acceptedCalendars" />
   </main>
 </template>
 
