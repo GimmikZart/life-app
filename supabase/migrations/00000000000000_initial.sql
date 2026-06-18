@@ -1,2 +1,0 @@
--- Initial placeholder migration for the versioned local Supabase backend.
--- Drizzle will generate future schema migrations into this folder.
