@@ -378,6 +378,7 @@ async function answerInvite(calendar: CalendarItem, status: 'accepted' | 'declin
     </section>
 
     <CalendarEventsPanel :calendars="acceptedCalendars" />
+    <CalendarVisibilityPanel />
   </main>
 </template>
 

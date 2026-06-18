@@ -1,6 +1,6 @@
 import { RRule } from 'rrule'
 
-export const eventVisibilityValues = ['clear', 'busy', 'hidden'] as const
+import { eventVisibilityValues } from './event-visibility'
 
 export type EventVisibility = (typeof eventVisibilityValues)[number]
 
