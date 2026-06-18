@@ -7,6 +7,8 @@ La suddivisione in componenti chiari è fondamentale.E sfrutta tutte le best pra
 
 Se ti chiedo di procedere con uno step, verifica prima che io non mi stia sbagliando e avvertimi se prima di procedere con un determinato step è necessario prima eseguirne un altro, o se ci sono criticità o mancanze che non permettono un corretto proseguimento dell'action plan.
 
+Al termine di ogni task devi testare ciò che hai implementato, verificare che non sorgano errori e che funzioni ciò che è stato implementato e, in caso di modifiche con effetti anche in altre parti di codice o feature, devi assicurarti che continuino a funzionare anche quelle. L'obbiettivo è che nel momento in cui vado poi a testare la feature e l'app, tutto funzioni correttamente senza errori in console che bloccano il flusso.
+
 Al termine di ogni task mi lanci questo comando powershell:
 powershell -NoProfile -Command "(New-Object System.Media.SoundPlayer 'C:\Users\gm.115\Desktop\agent_sound.wav').PlaySync()"
 

@@ -4,6 +4,7 @@ import { useDatabase } from '../../../../database/client'
 import { calendarMembers } from '../../../../database/schema'
 import { requireAuthenticatedUser } from '../../../../utils/auth'
 import { getCalendarMembership, requireCalendarPermission } from '../../../../utils/calendar-access'
+import { updateCalendarMemberStatus } from '../../../../utils/calendar-members'
 import { parseMemberPatchPayload } from '../../../../utils/calendar-validation'
 
 export default defineEventHandler(async (event) => {
@@ -31,11 +32,7 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    const [member] = await db
-      .update(calendarMembers)
-      .set({ status: payload.status })
-      .where(and(eq(calendarMembers.calendarId, calendarId), eq(calendarMembers.userId, currentUser.id)))
-      .returning()
+    const member = await updateCalendarMemberStatus(calendarId, currentUser.id, payload.status)
 
     return { member }
   }

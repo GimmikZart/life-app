@@ -118,6 +118,13 @@ function resetEventForm() {
   eventForm.visibilityDefault = 'clear'
 }
 
+function cloneCalendarEventsResponse(payload: CalendarEventsResponse): CalendarEventsResponse {
+  return {
+    events: payload.events.map((event) => ({ ...event })),
+    occurrences: payload.occurrences.map((occurrence) => ({ ...occurrence }))
+  }
+}
+
 function editEvent(event: CalendarEvent) {
   eventForm.id = event.id
   eventForm.calendarId = event.calendarId
@@ -133,7 +140,7 @@ function editEvent(event: CalendarEvent) {
 async function saveEvent() {
   const wasEditing = isEditing.value
   const optimisticId = eventForm.id || `optimistic-${Date.now()}`
-  const previousData = structuredClone(localData.value)
+  const previousData = cloneCalendarEventsResponse(localData.value)
   const optimisticEvent = buildOptimisticEvent(optimisticId)
   applyOptimisticEvent(optimisticEvent)
 
@@ -166,7 +173,7 @@ async function saveEvent() {
 }
 
 async function deleteEvent(event: CalendarEvent) {
-  const previousData = structuredClone(localData.value)
+  const previousData = cloneCalendarEventsResponse(localData.value)
   localData.value = {
     events: localData.value.events.filter((item) => item.id !== event.id),
     occurrences: localData.value.occurrences.filter((occurrence) => occurrence.eventId !== event.id)

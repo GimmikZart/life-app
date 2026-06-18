@@ -42,7 +42,6 @@ const memberPermissions: { value: Exclude<MemberPermission, 'owner'>; label: str
   { value: 'viewer', label: 'Viewer' }
 ]
 
-const { user } = useUser()
 const { data, pending, refresh } = await useFetch<CalendarResponse>('/api/calendars', {
   default: () => ({
     calendars: [],
@@ -80,6 +79,16 @@ function resetFeedback() {
   errorMessage.value = ''
 }
 
+function getActionErrorMessage(error: unknown) {
+  if (error instanceof Error) {
+    const fetchError = error as Error & { data?: { statusMessage?: string } }
+
+    return fetchError.data?.statusMessage ?? error.message
+  }
+
+  return 'Operazione non riuscita.'
+}
+
 async function runCalendarAction(action: () => Promise<void>, successMessage: string) {
   resetFeedback()
   isSubmitting.value = true
@@ -89,7 +98,7 @@ async function runCalendarAction(action: () => Promise<void>, successMessage: st
     await refresh()
     actionMessage.value = successMessage
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : 'Operazione non riuscita.'
+    errorMessage.value = getActionErrorMessage(error)
   } finally {
     isSubmitting.value = false
   }
@@ -163,15 +172,8 @@ async function removeMember(calendar: CalendarItem, member: CalendarMember) {
 }
 
 async function answerInvite(calendar: CalendarItem, status: 'accepted' | 'declined') {
-  const currentMember = calendar.members.find((member) => member.userId === user.value?.id)
-
-  if (!currentMember) {
-    errorMessage.value = 'Invito non trovato per questo utente.'
-    return
-  }
-
   await runCalendarAction(async () => {
-    await $fetch(`/api/calendars/${calendar.id}/members/${currentMember.userId}`, {
+    await $fetch(`/api/calendars/${calendar.id}/members/me`, {
       method: 'PATCH',
       body: { status }
     })
