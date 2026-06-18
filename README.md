@@ -38,3 +38,6 @@ npm run db:migrate
 If the Supabase CLI is not installed yet, install it first and then populate
 `.env` from `supabase status`. Keep `DATABASE_URL` pointed at the local Postgres
 instance while developing offline or against a local backend.
+
+Life App uses the local port range `55321-55324` plus analytics on `55327` to
+avoid collisions with other Supabase projects using the default ports.

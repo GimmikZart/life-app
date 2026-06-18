@@ -16,6 +16,8 @@ This folder is kept in version control so local Supabase work stays reproducible
 
 ## Notes
 
+- This project uses ports `55321-55324` plus analytics on `55327` locally, so it
+  can run beside another Supabase project on the default ports.
 - Keep `DATABASE_URL` pointed at the local Postgres endpoint while developing
   against the local backend.
 - Commit every meaningful schema change to `supabase/migrations/` so the backend
