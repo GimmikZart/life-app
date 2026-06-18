@@ -57,12 +57,17 @@ const eventQuery = computed(() => ({
   to: endOfLocalDate(rangeTo.value).toISOString()
 }))
 
-const { data, pending, refresh } = await useFetch<CalendarEventsResponse>('/api/calendar-events', {
+const eventCacheKey = 'life-app:calendar-events-panel:latest'
+const { data: apiData, pending, refresh } = await useFetch<CalendarEventsResponse>('/api/calendar-events', {
   query: eventQuery,
   default: () => ({
     events: [],
     occurrences: []
   })
+})
+const localData = ref<CalendarEventsResponse>(readCachedEvents() ?? {
+  events: [],
+  occurrences: []
 })
 
 const writableCalendars = computed(() =>
@@ -85,6 +90,15 @@ const actionMessage = ref('')
 const errorMessage = ref('')
 const isSubmitting = ref(false)
 const isEditing = computed(() => Boolean(eventForm.id))
+
+watch(apiData, (nextData) => {
+  if (!nextData) {
+    return
+  }
+
+  localData.value = nextData
+  writeCachedEvents(nextData)
+}, { immediate: true, deep: true })
 
 watch(writableCalendars, (calendars) => {
   if (!eventForm.calendarId && calendars[0]) {
@@ -117,6 +131,12 @@ function editEvent(event: CalendarEvent) {
 }
 
 async function saveEvent() {
+  const wasEditing = isEditing.value
+  const optimisticId = eventForm.id || `optimistic-${Date.now()}`
+  const previousData = structuredClone(localData.value)
+  const optimisticEvent = buildOptimisticEvent(optimisticId)
+  applyOptimisticEvent(optimisticEvent)
+
   await runEventAction(async () => {
     const body = {
       calendarId: eventForm.calendarId,
@@ -142,10 +162,17 @@ async function saveEvent() {
     }
 
     resetEventForm()
-  }, isEditing.value ? 'Evento aggiornato.' : 'Evento creato.')
+  }, wasEditing ? 'Evento aggiornato.' : 'Evento creato.', previousData)
 }
 
 async function deleteEvent(event: CalendarEvent) {
+  const previousData = structuredClone(localData.value)
+  localData.value = {
+    events: localData.value.events.filter((item) => item.id !== event.id),
+    occurrences: localData.value.occurrences.filter((occurrence) => occurrence.eventId !== event.id)
+  }
+  writeCachedEvents(localData.value)
+
   await runEventAction(async () => {
     await $fetch(`/api/calendar-events/${event.id}`, {
       method: 'DELETE'
@@ -154,22 +181,117 @@ async function deleteEvent(event: CalendarEvent) {
     if (eventForm.id === event.id) {
       resetEventForm()
     }
-  }, 'Evento eliminato.')
+  }, 'Evento eliminato.', previousData)
 }
 
-async function runEventAction(action: () => Promise<void>, successMessage: string) {
+async function runEventAction(
+  action: () => Promise<void>,
+  successMessage: string,
+  rollbackData?: CalendarEventsResponse
+) {
   actionMessage.value = ''
   errorMessage.value = ''
   isSubmitting.value = true
 
   try {
     await action()
-    await refresh()
+    await refreshAndSync()
     actionMessage.value = successMessage
   } catch (error) {
+    if (rollbackData) {
+      localData.value = rollbackData
+      writeCachedEvents(rollbackData)
+    }
+
     errorMessage.value = error instanceof Error ? error.message : 'Operazione evento non riuscita.'
   } finally {
     isSubmitting.value = false
+  }
+}
+
+async function refreshAndSync() {
+  await refresh()
+
+  if (apiData.value) {
+    localData.value = apiData.value
+    writeCachedEvents(apiData.value)
+  }
+}
+
+function buildOptimisticEvent(id: string): CalendarEvent {
+  const calendar = props.calendars.find((item) => item.id === eventForm.calendarId)
+
+  return {
+    id,
+    calendarId: eventForm.calendarId,
+    calendarName: calendar?.name ?? 'Calendario',
+    calendarColor: calendar?.color ?? '#2563eb',
+    title: eventForm.title,
+    category: eventForm.category || null,
+    startAt: new Date(eventForm.startAt).toISOString(),
+    endAt: new Date(eventForm.endAt).toISOString(),
+    isRecurring: eventForm.isRecurring,
+    recurrenceRule: eventForm.isRecurring ? eventForm.recurrenceRule : null,
+    visibilityDefault: eventForm.visibilityDefault
+  }
+}
+
+function applyOptimisticEvent(event: CalendarEvent) {
+  const nextEvents = [
+    ...localData.value.events.filter((item) => item.id !== event.id),
+    event
+  ].sort((left, right) => left.startAt.localeCompare(right.startAt))
+  const nextOccurrences = [
+    ...localData.value.occurrences.filter((occurrence) => occurrence.eventId !== event.id),
+    toOccurrence(event)
+  ].sort((left, right) => left.startAt.localeCompare(right.startAt))
+
+  localData.value = {
+    events: nextEvents,
+    occurrences: nextOccurrences
+  }
+  writeCachedEvents(localData.value)
+}
+
+function toOccurrence(event: CalendarEvent): CalendarOccurrence {
+  return {
+    id: event.id,
+    eventId: event.id,
+    calendarId: event.calendarId,
+    calendarName: event.calendarName,
+    calendarColor: event.calendarColor,
+    title: event.title,
+    category: event.category,
+    startAt: event.startAt,
+    endAt: event.endAt,
+    isRecurring: event.isRecurring,
+    visibilityDefault: event.visibilityDefault
+  }
+}
+
+function writeCachedEvents(payload: CalendarEventsResponse) {
+  if (!import.meta.client) {
+    return
+  }
+
+  localStorage.setItem(eventCacheKey, JSON.stringify(payload))
+}
+
+function readCachedEvents() {
+  if (!import.meta.client) {
+    return null
+  }
+
+  const cached = localStorage.getItem(eventCacheKey)
+
+  if (!cached) {
+    return null
+  }
+
+  try {
+    return JSON.parse(cached) as CalendarEventsResponse
+  } catch {
+    return null
   }
 }
 
@@ -317,12 +439,12 @@ function roundToNextHour(date: Date) {
       <h3>Occorrenze</h3>
 
       <p v-if="pending" class="empty-state">Caricamento eventi...</p>
-      <p v-else-if="!data.occurrences.length" class="empty-state">
+      <p v-else-if="!localData.occurrences.length" class="empty-state">
         Nessun evento nel periodo selezionato.
       </p>
 
       <article
-        v-for="occurrence in data.occurrences"
+        v-for="occurrence in localData.occurrences"
         :key="occurrence.id"
         class="event-row"
         :style="{ '--event-color': occurrence.calendarColor }"
@@ -344,7 +466,7 @@ function roundToNextHour(date: Date) {
       <h3>Serie ed eventi sorgente</h3>
 
       <article
-        v-for="event in data.events"
+        v-for="event in localData.events"
         :key="event.id"
         class="source-event"
       >

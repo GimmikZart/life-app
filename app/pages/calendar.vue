@@ -190,6 +190,8 @@ async function answerInvite(calendar: CalendarItem, status: 'accepted' | 'declin
       </p>
     </header>
 
+    <CalendarBoard />
+
     <p v-if="actionMessage" class="feedback feedback--success" role="status">
       {{ actionMessage }}
     </p>
