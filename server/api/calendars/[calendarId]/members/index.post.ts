@@ -61,6 +61,13 @@ export default defineEventHandler(async (event) => {
     })
     .returning()
 
+  if (!member) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Unable to save calendar invite.'
+    })
+  }
+
   const [memberWithUser] = await db
     .select({
       calendarId: calendarMembers.calendarId,

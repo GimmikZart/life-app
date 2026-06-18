@@ -19,8 +19,9 @@ export default defineEventHandler(async (event) => {
   const body = await readBody<Record<string, unknown>>(event)
   const payload = parseMemberPatchPayload(body)
   const db = useDatabase()
+  const nextStatus = payload.status
 
-  const isSelfStatusChange = targetUserId === currentUser.id && payload.status && !payload.permission
+  const isSelfStatusChange = targetUserId === currentUser.id && nextStatus && !payload.permission
 
   if (isSelfStatusChange) {
     const membership = await getCalendarMembership(calendarId, currentUser.id)
@@ -32,7 +33,7 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    const member = await updateCalendarMemberStatus(calendarId, currentUser.id, payload.status)
+    const member = await updateCalendarMemberStatus(calendarId, currentUser.id, nextStatus)
 
     return { member }
   }

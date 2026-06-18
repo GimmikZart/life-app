@@ -3,7 +3,7 @@ import FullCalendar from '@fullcalendar/vue3'
 import dayGridPlugin from '@fullcalendar/daygrid'
 import interactionPlugin from '@fullcalendar/interaction'
 import timeGridPlugin from '@fullcalendar/timegrid'
-import type { CalendarApi, DatesSetArg, EventClickArg, EventInput } from '@fullcalendar/core'
+import type { CalendarApi, CalendarOptions, DatesSetArg, EventClickArg, EventInput } from '@fullcalendar/core'
 import itLocale from '@fullcalendar/core/locales/it'
 
 type CalendarViewMode = 'month' | 'week' | 'day'
@@ -27,6 +27,12 @@ type CalendarEventsResponse = {
   occurrences: CalendarOccurrence[]
 }
 
+const props = withDefaults(defineProps<{
+  eventScope?: 'mine' | 'all'
+}>(), {
+  eventScope: 'mine'
+})
+
 const viewModes: { value: CalendarViewMode; label: string; fullCalendarView: string }[] = [
   { value: 'month', label: 'Mese', fullCalendarView: 'dayGridMonth' },
   { value: 'week', label: 'Settimana', fullCalendarView: 'timeGridWeek' },
@@ -34,10 +40,14 @@ const viewModes: { value: CalendarViewMode; label: string; fullCalendarView: str
 ]
 
 const calendarRef = ref<InstanceType<typeof FullCalendar> | null>(null)
-const activeView = ref<CalendarViewMode>('week')
+const activeView = ref<CalendarViewMode>('month')
 const visibleRange = reactive({
-  from: startOfLocalDate(new Date()).toISOString(),
-  to: endOfLocalDate(addDays(new Date(), 7)).toISOString()
+  from: startOfMonth(new Date()).toISOString(),
+  to: endOfMonth(new Date()).toISOString()
+})
+const displayRange = reactive({
+  start: startOfMonth(new Date()),
+  end: endOfMonth(new Date())
 })
 const occurrences = ref<CalendarOccurrence[]>([])
 const selectedOccurrence = ref<CalendarOccurrence | null>(null)
@@ -46,9 +56,40 @@ const errorMessage = ref('')
 const loadedFromCache = ref(false)
 
 const calendarTitle = computed(() => {
-  const api = getCalendarApi()
+  if (activeView.value === 'month') {
+    return capitalizeDate(displayRange.start.toLocaleDateString('it-IT', {
+      month: 'long',
+      year: 'numeric'
+    }))
+  }
 
-  return api?.view.title ?? 'Calendario'
+  if (activeView.value === 'week') {
+    const weekEnd = addDays(displayRange.start, 6)
+
+    if (displayRange.start.getMonth() === weekEnd.getMonth()
+      && displayRange.start.getFullYear() === weekEnd.getFullYear()) {
+      return capitalizeDate(`${displayRange.start.getDate()} - ${weekEnd.getDate()} ${weekEnd.toLocaleDateString('it-IT', {
+        month: 'long',
+        year: 'numeric'
+      })}`)
+    }
+
+    return capitalizeDate(`${displayRange.start.toLocaleDateString('it-IT', {
+      day: 'numeric',
+      month: 'long'
+    })} - ${weekEnd.toLocaleDateString('it-IT', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    })}`)
+  }
+
+  return capitalizeDate(displayRange.start.toLocaleDateString('it-IT', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  }))
 })
 
 const calendarEvents = computed<EventInput[]>(() =>
@@ -64,9 +105,9 @@ const calendarEvents = computed<EventInput[]>(() =>
   }))
 )
 
-const calendarOptions = computed(() => ({
+const calendarOptions = computed<CalendarOptions>(() => ({
   plugins: [dayGridPlugin, timeGridPlugin, interactionPlugin],
-  initialView: 'timeGridWeek',
+  initialView: 'dayGridMonth',
   headerToolbar: false,
   height: 'auto',
   locale: itLocale,
@@ -84,6 +125,9 @@ const calendarOptions = computed(() => ({
 async function handleDatesSet(arg: DatesSetArg) {
   visibleRange.from = arg.start.toISOString()
   visibleRange.to = arg.end.toISOString()
+  displayRange.start = new Date(arg.view.currentStart)
+  displayRange.end = new Date(arg.view.currentEnd)
+  activeView.value = viewModes.find((viewMode) => viewMode.fullCalendarView === arg.view.type)?.value ?? activeView.value
   await loadEvents()
 }
 
@@ -114,7 +158,8 @@ async function loadEvents() {
     const data = await $fetch<CalendarEventsResponse>('/api/calendar-events', {
       query: {
         from: visibleRange.from,
-        to: visibleRange.to
+        to: visibleRange.to,
+        scope: props.eventScope
       }
     })
 
@@ -196,19 +241,30 @@ function endOfLocalDate(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999)
 }
 
+function startOfMonth(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1)
+}
+
+function endOfMonth(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999)
+}
+
 function addDays(date: Date, days: number) {
   const nextDate = new Date(date)
   nextDate.setDate(nextDate.getDate() + days)
 
   return nextDate
 }
+
+function capitalizeDate(value: string) {
+  return value.charAt(0).toLocaleUpperCase('it-IT') + value.slice(1)
+}
 </script>
 
 <template>
-  <section class="calendar-board" aria-label="Vista calendario">
+  <section class="calendar-board" aria-label="Calendario">
     <div class="calendar-board__topbar">
       <div>
-        <p class="calendar-board__eyebrow">Vista calendario</p>
         <h2>{{ calendarTitle }}</h2>
       </div>
 
@@ -267,10 +323,9 @@ function addDays(date: Date, days: number) {
 
 <style scoped>
 .calendar-board {
-  margin-top: 18px;
   padding: 16px;
   border: 1px solid rgba(229, 231, 235, 0.9);
-  border-radius: 28px;
+  border-radius: 8px;
   background: rgba(255, 255, 255, 0.94);
   box-shadow: 0 18px 46px rgba(15, 23, 42, 0.08);
 }
@@ -303,9 +358,9 @@ p {
 
 h2 {
   margin-bottom: 0;
-  font-size: clamp(1.55rem, 9vw, 2.7rem);
-  line-height: 0.95;
-  letter-spacing: -0.05em;
+  font-size: 1.8rem;
+  line-height: 1.08;
+  letter-spacing: 0;
 }
 
 .calendar-board__navigation {
@@ -316,7 +371,7 @@ h2 {
 .view-switcher__button {
   min-height: 44px;
   border: 0;
-  border-radius: 15px;
+  border-radius: 8px;
   cursor: pointer;
   font: inherit;
   font-weight: 900;
@@ -336,7 +391,7 @@ h2 {
 .view-switcher {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   padding: 5px;
-  border-radius: 18px;
+  border-radius: 10px;
   background: #f1f5f9;
 }
 
@@ -345,11 +400,15 @@ h2 {
   color: var(--color-muted);
 }
 
+.view-switcher__button--active {
+  box-shadow: 0 8px 18px rgba(17, 24, 39, 0.18);
+}
+
 .calendar-board__notice,
 .calendar-board__fallback {
   margin: 12px 0;
   padding: 12px 14px;
-  border-radius: 16px;
+  border-radius: 8px;
   background: #e0ecff;
   color: #174ea6;
   font-weight: 800;
@@ -367,7 +426,7 @@ h2 {
   margin-top: 14px;
   padding: 16px;
   border: 1px solid rgba(17, 24, 39, 0.08);
-  border-radius: 24px;
+  border-radius: 8px;
   background: #ffffff;
   box-shadow: 0 18px 48px rgba(15, 23, 42, 0.18);
 }
@@ -382,7 +441,7 @@ h2 {
   min-height: 38px;
   padding: 0 12px;
   border: 1px solid var(--color-line);
-  border-radius: 999px;
+  border-radius: 8px;
   background: #ffffff;
   font-weight: 900;
 }
@@ -390,7 +449,7 @@ h2 {
 .occurrence-detail__badge {
   display: inline-flex;
   padding: 6px 10px;
-  border-radius: 999px;
+  border-radius: 8px;
   background: #e0ecff;
   color: #174ea6;
   font-size: 0.76rem;
@@ -415,7 +474,7 @@ h2 {
 }
 
 :deep(.fc-event) {
-  border-radius: 10px;
+  border-radius: 6px;
   border-width: 0;
   padding: 2px 4px;
   font-weight: 800;
@@ -430,7 +489,7 @@ h2 {
     margin-inline: calc(var(--shell-inline-padding) * -1);
     border-right: 0;
     border-left: 0;
-    border-radius: 28px;
+    border-radius: 0;
   }
 
   :deep(.fc) {
@@ -445,6 +504,10 @@ h2 {
 @media (min-width: 760px) {
   .calendar-board {
     padding: 24px;
+  }
+
+  h2 {
+    font-size: 2.35rem;
   }
 
   .calendar-board__topbar {

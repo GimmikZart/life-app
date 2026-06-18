@@ -19,18 +19,41 @@ type CalendarEventsResponse = {
 }
 
 const todayCacheKey = 'life-app:today-view:latest'
-const today = new Date()
-const todayRange = {
-  from: startOfLocalDate(today).toISOString(),
-  to: endOfLocalDate(today).toISOString()
-}
-const upcomingRange = {
-  from: todayRange.from,
-  to: endOfLocalDate(addDays(today, 14)).toISOString()
-}
+const selectedDate = ref(startOfLocalDate(new Date()))
+const isDatePickerOpen = ref(false)
+const { user } = useUser()
+
+const displayName = computed(() => {
+  const metadataName = user.value?.user_metadata?.name
+
+  if (typeof metadataName === 'string' && metadataName.trim()) {
+    return metadataName.trim()
+  }
+
+  return user.value?.email?.split('@')[0] ?? 'utente'
+})
+
+const selectedRange = computed(() => ({
+  from: startOfLocalDate(selectedDate.value).toISOString(),
+  to: endOfLocalDate(selectedDate.value).toISOString()
+}))
+
+const eventQuery = computed(() => ({
+  from: selectedRange.value.from,
+  to: selectedRange.value.to,
+  scope: 'mine'
+}))
+
+const selectedDateInput = computed({
+  get: () => formatDateInput(selectedDate.value),
+  set: (value: string) => {
+    selectedDate.value = startOfLocalDate(new Date(`${value}T00:00:00`))
+    isDatePickerOpen.value = false
+  }
+})
 
 const { data, pending, error } = await useFetch<CalendarEventsResponse>('/api/calendar-events', {
-  query: upcomingRange,
+  query: eventQuery,
   default: () => readTodayCache() ?? {
     events: [],
     occurrences: []
@@ -43,24 +66,50 @@ watch(data, (nextData) => {
   }
 }, { immediate: true, deep: true })
 
-const occurrences = computed(() => data.value?.occurrences ?? [])
-const todayOccurrences = computed(() =>
-  occurrences.value
-    .filter((occurrence) => overlapsRange(occurrence.startAt, occurrence.endAt, todayRange.from, todayRange.to))
+const dayOccurrences = computed(() =>
+  (data.value?.occurrences ?? [])
+    .filter((occurrence) => overlapsRange(
+      occurrence.startAt,
+      occurrence.endAt,
+      selectedRange.value.from,
+      selectedRange.value.to
+    ))
     .sort((left, right) => left.startAt.localeCompare(right.startAt))
 )
-const upcomingOccurrences = computed(() =>
-  occurrences.value
-    .filter((occurrence) => new Date(occurrence.startAt) > new Date())
-    .slice(0, 5)
-)
-const freeWindows = computed(() => buildFreeWindows(todayOccurrences.value))
-const timelineRows = computed(() => buildTimelineRows(todayOccurrences.value))
+
+const dateLabel = computed(() => {
+  const offset = daysBetween(startOfLocalDate(new Date()), selectedDate.value)
+
+  if (offset === 0) {
+    return 'Oggi'
+  }
+
+  if (offset === -1) {
+    return 'Ieri'
+  }
+
+  if (offset === 1) {
+    return 'Domani'
+  }
+
+  return selectedDate.value.toLocaleDateString('it-IT', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  })
+})
+
 const offlineNotice = computed(() =>
-  error.value && occurrences.value.length
+  error.value && dayOccurrences.value.length
     ? 'Connessione non disponibile: mostro gli ultimi eventi salvati.'
     : ''
 )
+
+function moveDay(days: number) {
+  selectedDate.value = addDays(selectedDate.value, days)
+  isDatePickerOpen.value = false
+}
 
 function formatTime(value: string) {
   return new Date(value).toLocaleTimeString('it-IT', {
@@ -69,79 +118,18 @@ function formatTime(value: string) {
   })
 }
 
-function formatDay(value: string) {
-  return new Date(value).toLocaleDateString('it-IT', {
-    weekday: 'short',
-    day: '2-digit',
-    month: 'short'
-  })
-}
-
-function formatEventTime(occurrence: CalendarOccurrence) {
+function formatDuration(occurrence: CalendarOccurrence) {
   return `${formatTime(occurrence.startAt)}-${formatTime(occurrence.endAt)}`
 }
 
-function buildTimelineRows(items: CalendarOccurrence[]) {
-  const events = items.map((occurrence) => ({
-    type: 'event' as const,
-    time: formatTime(occurrence.startAt),
-    title: occurrence.visibilityDefault === 'busy' ? 'Occupato' : occurrence.title,
-    meta: `${formatEventTime(occurrence)} - ${occurrence.calendarName}`,
-    color: occurrence.calendarColor
-  }))
-  const windows = buildFreeWindows(items).slice(0, 3).map((window) => ({
-    type: 'free' as const,
-    time: window.start,
-    title: 'Finestra libera',
-    meta: `${window.start}-${window.end}`,
-    color: '#10b981'
-  }))
-
-  return [...events, ...windows].sort((left, right) => left.time.localeCompare(right.time))
+function formatDateInput(date: Date) {
+  return formatDateTimeLocal(date).slice(0, 10)
 }
 
-function buildFreeWindows(items: CalendarOccurrence[]) {
-  const dayStart = new Date(today)
-  dayStart.setHours(7, 0, 0, 0)
+function formatDateTimeLocal(date: Date) {
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
 
-  const dayEnd = new Date(today)
-  dayEnd.setHours(22, 0, 0, 0)
-
-  const sortedEvents = items
-    .map((occurrence) => ({
-      start: new Date(occurrence.startAt),
-      end: new Date(occurrence.endAt)
-    }))
-    .filter((event) => event.end > dayStart && event.start < dayEnd)
-    .sort((left, right) => left.start.getTime() - right.start.getTime())
-
-  const windows: { start: string; end: string }[] = []
-  let cursor = new Date(dayStart)
-
-  for (const event of sortedEvents) {
-    const eventStart = new Date(Math.max(event.start.getTime(), dayStart.getTime()))
-    const eventEnd = new Date(Math.min(event.end.getTime(), dayEnd.getTime()))
-
-    if (eventStart.getTime() - cursor.getTime() >= 45 * 60 * 1000) {
-      windows.push({
-        start: formatTime(cursor.toISOString()),
-        end: formatTime(eventStart.toISOString())
-      })
-    }
-
-    if (eventEnd > cursor) {
-      cursor = eventEnd
-    }
-  }
-
-  if (dayEnd.getTime() - cursor.getTime() >= 45 * 60 * 1000) {
-    windows.push({
-      start: formatTime(cursor.toISOString()),
-      end: formatTime(dayEnd.toISOString())
-    })
-  }
-
-  return windows
+  return localDate.toISOString().slice(0, 16)
 }
 
 function overlapsRange(startAt: string, endAt: string, rangeStart: string, rangeEnd: string) {
@@ -161,6 +149,12 @@ function addDays(date: Date, days: number) {
   nextDate.setDate(nextDate.getDate() + days)
 
   return nextDate
+}
+
+function daysBetween(left: Date, right: Date) {
+  const dayInMs = 24 * 60 * 60 * 1000
+
+  return Math.round((startOfLocalDate(right).getTime() - startOfLocalDate(left).getTime()) / dayInMs)
 }
 
 function writeTodayCache(payload: CalendarEventsResponse) {
@@ -192,13 +186,9 @@ function readTodayCache() {
 
 <template>
   <main class="today-view">
-    <header class="today-hero">
-      <p class="today-hero__eyebrow">Today View</p>
-      <h1>Oggi</h1>
-      <p>
-        La giornata in una vista sola: timeline, eventi di oggi, prossimi appuntamenti
-        e le sezioni pronte per Action e disponibilita condivise.
-      </p>
+    <header class="today-header">
+      <h1>Ciao, {{ displayName }}</h1>
+      <p>Ecco i tuoi prossimi impegni.</p>
     </header>
 
     <p v-if="offlineNotice" class="notice notice--cache" role="status">
@@ -211,172 +201,104 @@ function readTodayCache() {
       Non riesco a caricare gli eventi in questo momento.
     </p>
 
-    <section class="today-grid" aria-label="Today View">
-      <article class="panel timeline-panel">
-        <div class="panel__header">
-          <p class="panel__eyebrow">{{ formatDay(today.toISOString()) }}</p>
-          <h2>Timeline giornata</h2>
-        </div>
+    <section class="agenda" aria-label="Agenda giornaliera">
+      <div class="agenda__toolbar">
+        <button class="agenda__arrow" type="button" aria-label="Giorno precedente" @click="moveDay(-1)">
+          ‹
+        </button>
 
-        <p v-if="!timelineRows.length" class="empty-state">
-          Nessun evento oggi. La giornata e libera, almeno per ora.
-        </p>
-
-        <div
-          v-for="row in timelineRows"
-          :key="`${row.type}-${row.time}-${row.title}`"
-          class="timeline-row"
-          :class="{ 'timeline-row--free': row.type === 'free' }"
-          :style="{ '--row-color': row.color }"
-        >
-          <span class="timeline-row__time">{{ row.time }}</span>
-          <span class="timeline-row__marker" aria-hidden="true" />
-          <div>
-            <strong>{{ row.title }}</strong>
-            <span>{{ row.meta }}</span>
-          </div>
-        </div>
-      </article>
-
-      <article class="panel">
-        <div class="panel__header">
-          <p class="panel__eyebrow">Calendario</p>
-          <h2>Eventi di oggi</h2>
-        </div>
-
-        <p v-if="!todayOccurrences.length" class="empty-state">
-          Nessun evento in calendario per oggi.
-        </p>
-
-        <ul v-else class="event-list">
-          <li
-            v-for="occurrence in todayOccurrences"
-            :key="occurrence.id"
-            :style="{ '--event-color': occurrence.calendarColor }"
+        <div class="agenda__date-picker">
+          <button class="agenda__date-button" type="button" @click="isDatePickerOpen = !isDatePickerOpen">
+            {{ dateLabel }}
+          </button>
+          <input
+            v-if="isDatePickerOpen"
+            v-model="selectedDateInput"
+            class="agenda__date-input"
+            type="date"
+            aria-label="Seleziona data agenda"
           >
-            <span class="event-list__dot" aria-hidden="true" />
-            <div>
-              <strong>{{ occurrence.visibilityDefault === 'busy' ? 'Occupato' : occurrence.title }}</strong>
-              <span>{{ formatEventTime(occurrence) }} - {{ occurrence.calendarName }}</span>
-            </div>
-          </li>
-        </ul>
-      </article>
-
-      <article class="panel">
-        <div class="panel__header">
-          <p class="panel__eyebrow">Prossimi</p>
-          <h2>In arrivo</h2>
         </div>
 
-        <p v-if="!upcomingOccurrences.length" class="empty-state">
-          Nessun prossimo evento nei prossimi 14 giorni.
+        <button class="agenda__arrow" type="button" aria-label="Giorno successivo" @click="moveDay(1)">
+          ›
+        </button>
+      </div>
+
+      <div class="agenda-table">
+        <div class="agenda-table__head" aria-hidden="true">
+          <span>Ora</span>
+          <span>Impegno</span>
+        </div>
+
+        <p v-if="!dayOccurrences.length" class="empty-state">
+          Nessun impegno personale per questo giorno.
         </p>
 
-        <ul v-else class="compact-list">
-          <li v-for="occurrence in upcomingOccurrences" :key="occurrence.id">
+        <article
+          v-for="occurrence in dayOccurrences"
+          :key="occurrence.id"
+          class="agenda-row"
+          :style="{ '--event-color': occurrence.calendarColor }"
+        >
+          <time class="agenda-row__time" :datetime="occurrence.startAt">
+            {{ formatTime(occurrence.startAt) }}
+          </time>
+          <span class="agenda-row__marker" aria-hidden="true" />
+          <div class="agenda-row__content">
             <strong>{{ occurrence.title }}</strong>
-            <span>{{ formatDay(occurrence.startAt) }} - {{ formatEventTime(occurrence) }}</span>
-          </li>
-        </ul>
-      </article>
-
-      <article class="panel panel--placeholder">
-        <div class="panel__header">
-          <p class="panel__eyebrow">Ciclo 3</p>
-          <h2>Action pianificate</h2>
-        </div>
-        <p>
-          Placeholder intenzionale: questa sezione verra collegata appena arriva
-          l'Action Engine.
-        </p>
-      </article>
-
-      <article class="panel panel--placeholder">
-        <div class="panel__header">
-          <p class="panel__eyebrow">Ciclo 2.5</p>
-          <h2>Disponibilita condivise</h2>
-        </div>
-        <p v-if="!freeWindows.length">
-          Nessuno slot libero locale significativo trovato oggi.
-        </p>
-        <ul v-else class="compact-list">
-          <li v-for="window in freeWindows.slice(0, 3)" :key="`${window.start}-${window.end}`">
-            <strong>Slot libero personale</strong>
-            <span>{{ window.start }}-{{ window.end }}</span>
-          </li>
-        </ul>
-        <small>
-          Il confronto con altri utenti arriva con overlay e regole di visibilita.
-        </small>
-      </article>
+            <span>{{ formatDuration(occurrence) }} - {{ occurrence.calendarName }}</span>
+            <small v-if="occurrence.category">{{ occurrence.category }}</small>
+          </div>
+        </article>
+      </div>
     </section>
   </main>
 </template>
 
 <style scoped>
 .today-view {
-  width: min(100% - (var(--shell-inline-padding) * 2), 1120px);
+  width: min(100% - (var(--shell-inline-padding) * 2), 860px);
   margin: 0 auto;
-  padding: 18px 0 28px;
+  padding: 20px 0 28px;
 }
 
-.today-hero {
-  max-width: 760px;
-  margin-bottom: 18px;
-}
-
-.today-hero__eyebrow,
-.panel__eyebrow {
-  margin: 0 0 8px;
-  color: var(--color-accent);
-  font-size: 0.78rem;
-  font-weight: 900;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+.today-header {
+  margin-bottom: 20px;
 }
 
 h1,
-h2,
 p {
   margin-top: 0;
 }
 
 h1 {
-  margin-bottom: 10px;
-  font-size: clamp(3.4rem, 19vw, 6.6rem);
-  line-height: 0.82;
-  letter-spacing: -0.08em;
+  margin-bottom: 8px;
+  font-size: clamp(2.45rem, 13vw, 4.75rem);
+  line-height: 0.95;
+  letter-spacing: 0;
 }
 
-h2 {
-  margin-bottom: 0;
-  font-size: 1.2rem;
-}
-
-.today-hero p,
+.today-header p,
 .empty-state,
-.panel p,
-.compact-list span,
-.event-list span,
-.timeline-row span,
-small {
+.agenda-row span,
+.agenda-row small {
   color: var(--color-muted);
-  line-height: 1.55;
+  line-height: 1.5;
 }
 
 .notice,
-.panel {
+.agenda {
   border: 1px solid rgba(229, 231, 235, 0.9);
-  border-radius: 26px;
-  background: rgba(255, 255, 255, 0.93);
-  box-shadow: 0 14px 40px rgba(15, 23, 42, 0.06);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.06);
 }
 
 .notice {
   margin-bottom: 14px;
-  padding: 14px 16px;
-  font-weight: 900;
+  padding: 13px 14px;
+  font-weight: 800;
 }
 
 .notice--cache {
@@ -389,109 +311,131 @@ small {
   color: #991b1b;
 }
 
-.today-grid {
+.agenda {
+  overflow: hidden;
+}
+
+.agenda__toolbar {
   display: grid;
-  gap: 12px;
+  grid-template-columns: 48px 1fr 48px;
+  align-items: center;
+  border-bottom: 1px solid var(--color-line);
+  background: #ffffff;
 }
 
-.panel {
-  padding: 18px;
-}
-
-.panel__header {
-  margin-bottom: 16px;
-}
-
-.panel--placeholder {
-  background:
-    linear-gradient(135deg, rgba(224, 236, 255, 0.9), rgba(255, 255, 255, 0.92));
-}
-
-.timeline-row {
-  display: grid;
-  grid-template-columns: 56px 12px 1fr;
-  gap: 12px;
-  padding: 13px 0;
-  border-top: 1px solid var(--color-line);
-}
-
-.timeline-row__time {
+.agenda__arrow,
+.agenda__date-button {
+  min-height: 54px;
+  border: 0;
+  background: transparent;
+  color: var(--color-ink);
+  cursor: pointer;
+  font: inherit;
   font-weight: 900;
 }
 
-.timeline-row__marker {
-  width: 12px;
-  height: 12px;
-  margin-top: 6px;
-  border-radius: 999px;
-  background: var(--row-color);
-  box-shadow: 0 0 0 5px color-mix(in srgb, var(--row-color) 18%, transparent);
+.agenda__arrow {
+  font-size: 2rem;
+  line-height: 1;
 }
 
-.timeline-row strong,
-.timeline-row span,
-.compact-list strong,
-.compact-list span,
-.event-list strong,
-.event-list span {
-  display: block;
-}
-
-.timeline-row--free {
-  background: linear-gradient(90deg, rgba(16, 185, 129, 0.08), transparent);
-}
-
-.compact-list,
-.event-list {
+.agenda__date-picker {
+  position: relative;
   display: grid;
-  gap: 12px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
 }
 
-.event-list li {
+.agenda__date-button {
+  width: 100%;
+  padding: 0 10px;
+  font-size: 1.05rem;
+}
+
+.agenda__date-input {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  z-index: 5;
+  width: min(260px, 82vw);
+  min-height: 48px;
+  transform: translateX(-50%);
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: var(--shadow-soft);
+  color: var(--color-ink);
+  font: inherit;
+}
+
+.agenda-table {
+  padding: 6px 0;
+}
+
+.agenda-table__head,
+.agenda-row {
   display: grid;
-  grid-template-columns: 10px 1fr;
+  grid-template-columns: 62px 12px 1fr;
   gap: 10px;
   align-items: start;
+  padding: 12px 14px;
 }
 
-.event-list__dot {
+.agenda-table__head {
+  color: var(--color-muted);
+  font-size: 0.76rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.agenda-table__head span:last-child {
+  grid-column: 3;
+}
+
+.agenda-row {
+  border-top: 1px solid var(--color-line);
+}
+
+.agenda-row__time {
+  font-weight: 900;
+}
+
+.agenda-row__marker {
   width: 10px;
-  height: 34px;
+  height: 38px;
   border-radius: 999px;
   background: var(--event-color);
 }
 
-.compact-list li {
-  padding: 12px;
-  border-radius: 18px;
-  background: #f8fafc;
+.agenda-row__content,
+.agenda-row strong,
+.agenda-row span,
+.agenda-row small {
+  display: block;
+}
+
+.agenda-row__content {
+  min-width: 0;
+}
+
+.agenda-row strong {
+  overflow-wrap: anywhere;
+}
+
+.empty-state {
+  margin: 0;
+  padding: 22px 14px;
+  border-top: 1px solid var(--color-line);
 }
 
 @media (min-width: 760px) {
   .today-view {
-    padding: 40px 0;
+    padding: 44px 0;
   }
 
-  .today-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 16px;
-  }
-
-  .panel {
-    padding: 24px;
-  }
-}
-
-@media (min-width: 1040px) {
-  .today-grid {
-    grid-template-columns: 1.35fr 1fr 1fr;
-  }
-
-  .timeline-panel {
-    grid-row: span 2;
+  .agenda-table__head,
+  .agenda-row {
+    grid-template-columns: 84px 12px 1fr;
+    padding: 14px 18px;
   }
 }
 </style>

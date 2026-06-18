@@ -20,6 +20,13 @@ export default defineEventHandler(async (event) => {
       })
       .returning()
 
+    if (!calendar) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: 'Unable to create calendar.'
+      })
+    }
+
     await tx.insert(calendarMembers).values({
       calendarId: calendar.id,
       userId: currentUser.id,

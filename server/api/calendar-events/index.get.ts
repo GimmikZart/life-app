@@ -10,12 +10,14 @@ import {
 } from '../../database/schema'
 import { requireAuthenticatedUser } from '../../utils/auth'
 import { parseDateRange } from '../../utils/calendar-event-validation'
-import { expandCalendarEvents } from '../../utils/calendar-recurrence'
+import { expandCalendarEvents, type CalendarEventForExpansion } from '../../utils/calendar-recurrence'
 import { resolveEventVisibility } from '../../utils/event-visibility'
 
 export default defineEventHandler(async (event) => {
   const currentUser = await requireAuthenticatedUser(event)
-  const { from, to } = parseDateRange(getQuery(event))
+  const query = getQuery(event)
+  const { from, to } = parseDateRange(query)
+  const ownOnly = query.scope === 'mine'
   const db = useDatabase()
 
   const memberships = await db
@@ -57,8 +59,12 @@ export default defineEventHandler(async (event) => {
       )
     ))
 
-  const eventOwnerIds = [...new Set(eventRows.map((row) => row.userId))]
-  const eventIds = eventRows.map((row) => row.id)
+  const scopedEventRows = ownOnly
+    ? eventRows.filter((row) => row.userId === currentUser.id)
+    : eventRows
+
+  const eventOwnerIds = [...new Set(scopedEventRows.map((row) => row.userId))]
+  const eventIds = scopedEventRows.map((row) => row.id)
   const relationshipRows = eventOwnerIds.length
     ? await db
         .select({
@@ -85,9 +91,11 @@ export default defineEventHandler(async (event) => {
           eq(eventVisibilityOverrides.targetUserId, currentUser.id)
         ))
     : []
-  const visibleEventRows = eventRows
-    .map((row) => resolveEventVisibility(row, currentUser.id, relationshipRows, overrideRows))
-    .filter((row) => row !== null)
+  const visibleEventRows = scopedEventRows
+    .map((row) =>
+      resolveEventVisibility(row, currentUser.id, relationshipRows, overrideRows) as CalendarEventForExpansion | null
+    )
+    .filter((row): row is CalendarEventForExpansion => row !== null)
 
   return {
     events: visibleEventRows.map((row) => ({

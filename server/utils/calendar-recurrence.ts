@@ -1,6 +1,6 @@
 import { RRule } from 'rrule'
 
-type CalendarEventForExpansion = {
+export type CalendarEventForExpansion = {
   id: string
   title: string
   category: string | null
