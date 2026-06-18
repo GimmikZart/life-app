@@ -17,13 +17,21 @@ defineProps<{
 
 <style scoped>
 .placeholder-page {
-  width: min(960px, calc(100% - 32px));
+  display: grid;
+  width: min(100% - (var(--shell-inline-padding) * 2), 960px);
+  min-height: calc(100svh - 64px - var(--shell-bottom-nav-space));
   margin: 0 auto;
-  padding: 56px 0;
+  padding: 20px 0 28px;
+  align-items: center;
 }
 
 .placeholder-page__content {
   max-width: 640px;
+  padding: 24px 18px;
+  border: 1px solid rgba(229, 231, 235, 0.9);
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: var(--shadow-soft);
 }
 
 .placeholder-page__eyebrow {
@@ -37,13 +45,25 @@ defineProps<{
 
 h1 {
   margin: 0 0 12px;
-  font-size: clamp(2rem, 6vw, 3.2rem);
-  line-height: 1.05;
+  font-size: clamp(2.15rem, 13vw, 4.2rem);
+  line-height: 0.92;
+  letter-spacing: -0.06em;
 }
 
 p {
   margin: 0;
   color: var(--color-muted);
   line-height: 1.7;
+}
+
+@media (min-width: 760px) {
+  .placeholder-page {
+    min-height: calc(100vh - 74px);
+    padding: 48px 0;
+  }
+
+  .placeholder-page__content {
+    padding: 34px;
+  }
 }
 </style>

@@ -20,8 +20,12 @@ onMounted(async () => {
 <style scoped>
 .logout-page {
   display: grid;
-  min-height: 100vh;
+  min-height: 100svh;
   place-items: center;
+  padding: 24px;
   color: #4b5563;
+  background:
+    radial-gradient(circle at 50% 20%, rgba(37, 99, 235, 0.14), transparent 22rem),
+    #f8fafc;
 }
 </style>

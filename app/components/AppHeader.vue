@@ -18,7 +18,7 @@ const displayName = computed(() => {
   <header class="app-header">
     <NuxtLink class="app-header__brand" to="/" aria-label="Life App home">
       <span class="app-header__brand-mark">LA</span>
-      <span>Life App</span>
+      <span class="app-header__brand-text">Life App</span>
     </NuxtLink>
 
     <nav class="app-header__nav" aria-label="Navigazione principale">
@@ -44,16 +44,15 @@ const displayName = computed(() => {
 .app-header {
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: 20;
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: 1fr auto;
   align-items: center;
-  gap: 24px;
-  min-height: 72px;
-  padding: 0 clamp(16px, 4vw, 40px);
-  border-bottom: 1px solid var(--color-line);
-  background: rgba(248, 250, 252, 0.94);
-  backdrop-filter: blur(12px);
+  gap: 12px;
+  min-height: 64px;
+  padding: max(10px, env(safe-area-inset-top)) var(--shell-inline-padding) 10px;
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(248, 250, 252, 0.78));
+  backdrop-filter: blur(16px);
 }
 
 .app-header__brand,
@@ -66,6 +65,7 @@ const displayName = computed(() => {
   display: inline-flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
   font-weight: 800;
 }
 
@@ -80,8 +80,14 @@ const displayName = computed(() => {
   font-size: 0.78rem;
 }
 
+.app-header__brand-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .app-header__nav {
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: center;
   gap: 6px;
@@ -111,7 +117,7 @@ const displayName = computed(() => {
 }
 
 .app-header__user-name {
-  max-width: 180px;
+  max-width: 38vw;
   overflow: hidden;
   color: var(--color-muted);
   font-size: 0.9rem;
@@ -121,31 +127,37 @@ const displayName = computed(() => {
 }
 
 .app-header__logout {
-  padding: 9px 12px;
+  min-height: 40px;
+  padding: 10px 12px;
   border: 1px solid var(--color-line);
-  border-radius: 6px;
+  border-radius: 999px;
   background: #ffffff;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
   font-weight: 800;
 }
 
-@media (max-width: 860px) {
-  .app-header {
-    grid-template-columns: 1fr auto;
-    gap: 12px;
-    padding-block: 12px;
-  }
-
-  .app-header__nav {
-    grid-column: 1 / -1;
-    grid-row: 2;
-    justify-content: flex-start;
-    order: 3;
+@media (max-width: 420px) {
+  .app-header__brand-text,
+  .app-header__user-name {
+    display: none;
   }
 }
 
-@media (max-width: 560px) {
+@media (min-width: 760px) {
+  .app-header {
+    grid-template-columns: auto 1fr auto;
+    gap: 20px;
+    min-height: 74px;
+    padding: 0 var(--shell-inline-padding);
+    border-bottom: 1px solid rgba(229, 231, 235, 0.86);
+  }
+
+  .app-header__nav {
+    display: flex;
+  }
+
   .app-header__user-name {
-    display: none;
+    max-width: 180px;
   }
 }
 </style>

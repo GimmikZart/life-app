@@ -1,3 +1,6 @@
+L'applicazione è mobile-first.
+Quindi assicurati che sia prima di tutto funzionante e presente la versioe mobile, che sarà quella predominante. Dopodichè fai l'adattamento a versione tablet e desktop seguendo le best practice di design e UX.
+
 Ogni volta che scrivi codice assicurati di centralizzare quanto più codice possibile, creando componenti e riutilizzandoli quanto più possibile.
 Il codice deve essere facilmente manutenibile, leggibile e chiaro.
 La suddivisione in componenti chiari è fondamentale.E sfrutta tutte le best practice di vue 3 e nuxt 4 per scrivere codice di qualità. Inoltre i passaggi più spinosi commentali in modo chiaro spiegando cosa fa il componente o il metodo.
