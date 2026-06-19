@@ -12,6 +12,27 @@ Le integrazioni con calendari esterni (Google, Outlook, CalDAV) sono **escluse**
 
 ---
 
+## Aggiornamento di scope (revisione 2026-06-18) — Modello a layer e integrazione
+
+> Deviazione consapevole dal Project Knowledge v2, concordata dopo il completamento di 2.5a. Documentata qui invece di applicata in sordina (regola 3 dell'indice).
+
+La feature Calendario viene estesa con il concetto di **layer**: un calendario è un livello accendibile/spegnibile, e la "vista ufficiale" dell'utente è la composizione di più layer (gli eventi non si spostano né si duplicano). Si distinguono due meccanismi:
+
+- **(A) Calendario condiviso** (`calendar_members`): calendario co-posseduto da più persone. Già coperto da 2.2.
+- **(B) Connessione tra utenti** (`relationships`): ognuno tiene i propri calendari; serve solo a confrontare le disponibilità con regole di privacy.
+
+**Modifiche allo schema (rispetto al Project Knowledge v2):**
+- `calendar_members.is_primary` (bool) — il calendario primario dell'utente (uno solo, destinazione default dei nuovi eventi, sempre integrato). Auto-creato alla registrazione ("Personale").
+- `calendar_members.auto_integrate` (bool) — il calendario confluisce nella vista ufficiale dell'utente e conta come "occupato". La preferenza è **per-utente** (sul membership), non sul calendario.
+- `calendar_events.pinned_to_primary` (bool) — integrazione manuale non distruttiva del singolo evento nella vista ufficiale del proprietario.
+
+**Step di implementazione (sostituiscono/estendono 2.5b):**
+1. **Layer & primario** — schema sopra, auto-creazione primario, filtro `calendarIds` + scope `official` su `/api/calendar-events`, select calendario in alto nel board (default primario), controlli primario/integrazione nel pannello gestione, pin evento. *(stato: FATTO)*
+2. **Connessioni reciproche + privacy** — handshake con `status` sulle relationships (pending/accepted/declined), riga reciproca creata all'accettazione, default di visibilità invertito a `busy` (privato), UI invita/accetta/rifiuta + richieste inviate/ricevute + connessioni attive. `resolveEventVisibility` applica solo relazioni accettate. *(stato: FATTO — test runtime richiede un secondo account)*
+3. **Motore Free/Busy + overlay N utenti** — endpoint `/api/availability`, algoritmo sweep-line per gli slot liberi comuni, vista "Confronta disponibilità" + "trova primo slot libero" (generalizza il 2.5b originale, non più limitato a 2 utenti), sezione "Disponibilità condivise" nella Today View. *(stato: DA FARE)*
+
+---
+
 ## Sotto-Ciclo 2.1 — Schema dati Calendario
 
 **Obiettivo:** avere nel database tutte le tabelle necessarie al Calendario, come da Project Knowledge v2 sezione 4, con i vincoli di unicità e i campi necessari a supportare le regole di visibilità per categoria.

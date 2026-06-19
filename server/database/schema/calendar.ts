@@ -8,6 +8,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid
 } from 'drizzle-orm/pg-core'
 
@@ -39,6 +40,13 @@ export const eventVisibilityEnum = pgEnum('event_visibility', [
   'hidden'
 ])
 
+// Stato dell'handshake di connessione tra due utenti (relazione reciproca).
+export const relationshipStatusEnum = pgEnum('relationship_status', [
+  'pending',
+  'accepted',
+  'declined'
+])
+
 export const calendars = pgTable(
   'calendars',
   {
@@ -65,11 +73,22 @@ export const calendarMembers = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     permission: calendarPermissionEnum('permission').notNull().default('viewer'),
-    status: calendarMemberStatusEnum('status').notNull().default('pending')
+    status: calendarMemberStatusEnum('status').notNull().default('pending'),
+    // Layer model (per-utente, non sul calendario): preferenze di integrazione
+    // nella "vista ufficiale" dell'utente. `isPrimary` = calendario principale
+    // (destinazione di default dei nuovi eventi, sempre integrato); `autoIntegrate`
+    // = gli eventi di questo calendario compaiono nella vista ufficiale e contano
+    // come "occupato" nel calcolo della disponibilita.
+    isPrimary: boolean('is_primary').notNull().default(false),
+    autoIntegrate: boolean('auto_integrate').notNull().default(false)
   },
   (table) => [
     unique('calendar_members_calendar_id_user_id_unique').on(table.calendarId, table.userId),
-    index('calendar_members_user_status_idx').on(table.userId, table.status)
+    index('calendar_members_user_status_idx').on(table.userId, table.status),
+    // Un solo calendario primario per utente (vincolo applicato a livello DB).
+    uniqueIndex('calendar_members_one_primary_per_user_unique')
+      .on(table.userId)
+      .where(sql`${table.isPrimary} = true`)
   ]
 )
 
@@ -90,6 +109,9 @@ export const calendarEvents = pgTable(
     isRecurring: boolean('is_recurring').notNull().default(false),
     recurrenceRule: text('recurrence_rule'),
     visibilityDefault: eventVisibilityEnum('visibility_default').notNull().default('clear'),
+    // Integrazione manuale (non distruttiva): l'evento resta nel suo calendario
+    // ma, se true, compare anche nella vista ufficiale del proprietario.
+    pinnedToPrimary: boolean('pinned_to_primary').notNull().default(false),
     source: text('source').notNull().default('life_app'),
     externalId: text('external_id'),
     // Ciclo 3 colleghera questo campo a actions.id con una foreign key reale.
@@ -116,11 +138,15 @@ export const relationships = pgTable(
     visibilityRules: jsonb('visibility_rules')
       .$type<Record<string, unknown>>()
       .notNull()
-      .default(sql`'{}'::jsonb`)
+      .default(sql`'{}'::jsonb`),
+    // Handshake reciproco: una connessione e attiva solo quando entrambe le
+    // direzioni (A->B e B->A) sono 'accepted'. Ogni utente controlla la propria riga.
+    status: relationshipStatusEnum('status').notNull().default('pending')
   },
   (table) => [
     unique('relationships_user_id_target_user_id_unique').on(table.userId, table.targetUserId),
-    index('relationships_target_user_id_idx').on(table.targetUserId)
+    index('relationships_target_user_id_idx').on(table.targetUserId),
+    index('relationships_target_status_idx').on(table.targetUserId, table.status)
   ]
 )
 

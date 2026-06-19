@@ -20,11 +20,26 @@ type CalendarOccurrence = {
   endAt: string
   isRecurring: boolean
   visibilityDefault: 'clear' | 'busy' | 'hidden'
+  pinnedToPrimary: boolean
 }
 
 type CalendarEventsResponse = {
   events: unknown[]
   occurrences: CalendarOccurrence[]
+}
+
+type CalendarLayer = {
+  id: string
+  name: string
+  color: string
+  myPermission: 'owner' | 'editor' | 'viewer'
+  myStatus: 'pending' | 'accepted' | 'declined'
+  myIsPrimary: boolean
+  myAutoIntegrate: boolean
+}
+
+type CalendarsResponse = {
+  calendars: CalendarLayer[]
 }
 
 const props = withDefaults(defineProps<{
@@ -54,6 +69,78 @@ const selectedOccurrence = ref<CalendarOccurrence | null>(null)
 const isLoading = ref(false)
 const errorMessage = ref('')
 const loadedFromCache = ref(false)
+const isPinning = ref(false)
+
+// Layer del calendario: ogni calendario accessibile e un livello accendibile/spegnibile.
+const { data: calendarsData } = await useFetch<CalendarsResponse>('/api/calendars', {
+  default: () => ({ calendars: [] })
+})
+
+const layers = computed<CalendarLayer[]>(() =>
+  (calendarsData.value?.calendars ?? []).filter((layer) => layer.myStatus === 'accepted')
+)
+const officialLayerIds = computed(() =>
+  layers.value.filter((layer) => layer.myIsPrimary || layer.myAutoIntegrate).map((layer) => layer.id)
+)
+
+// Selettore della vista: 'official' (vista ufficiale) | id di un calendario singolo.
+// Di default mostra il calendario primario ("Personale").
+const selectedView = ref<'official' | string>('')
+
+// Imposta il default sul primario e ripristina se la scelta non e piu valida
+// (es. calendario eliminato).
+watch(layers, (nextLayers) => {
+  const stillValid = selectedView.value === 'official'
+    || nextLayers.some((layer) => layer.id === selectedView.value)
+
+  if (!stillValid) {
+    const primary = nextLayers.find((layer) => layer.myIsPrimary)
+    selectedView.value = primary?.id ?? nextLayers[0]?.id ?? ''
+  }
+}, { immediate: true })
+
+// Calendari effettivamente visibili in base alla scelta della select.
+const visibleCalendarIds = computed<string[]>(() => {
+  if (selectedView.value === 'official') {
+    return officialLayerIds.value
+  }
+
+  return layers.value.some((layer) => layer.id === selectedView.value)
+    ? [selectedView.value]
+    : []
+})
+
+// Il pin (integrazione manuale) e consentito solo sui propri calendari.
+// Nota: per i calendari condivisi che possiedi, eventi creati da co-editor
+// non sono fissabili (il pin e relativo al proprietario dell'evento).
+function canPinOccurrence(occurrence: CalendarOccurrence) {
+  return layers.value.some((layer) => layer.id === occurrence.calendarId && layer.myPermission === 'owner')
+}
+
+// Ricarica gli eventi quando cambiano i layer visibili (solo dopo il primo render).
+watch(visibleCalendarIds, () => {
+  if (getCalendarApi()) {
+    loadEvents()
+  }
+})
+
+async function togglePin(occurrence: CalendarOccurrence) {
+  isPinning.value = true
+
+  try {
+    await $fetch(`/api/calendar-events/${occurrence.eventId}/pin`, {
+      method: 'PATCH',
+      body: { pinnedToPrimary: !occurrence.pinnedToPrimary }
+    })
+
+    occurrence.pinnedToPrimary = !occurrence.pinnedToPrimary
+    await loadEvents()
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : 'Impossibile aggiornare l\'evento.'
+  } finally {
+    isPinning.value = false
+  }
+}
 
 const calendarTitle = computed(() => {
   if (activeView.value === 'month') {
@@ -151,6 +238,14 @@ async function moveCalendar(direction: 'prev' | 'today' | 'next') {
 }
 
 async function loadEvents() {
+  // Nessun layer acceso (ma esistono calendari): non mostrare nulla.
+  if (layers.value.length && !visibleCalendarIds.value.length) {
+    occurrences.value = []
+    errorMessage.value = ''
+
+    return
+  }
+
   isLoading.value = true
   errorMessage.value = ''
 
@@ -159,7 +254,9 @@ async function loadEvents() {
       query: {
         from: visibleRange.from,
         to: visibleRange.to,
-        scope: props.eventScope
+        scope: props.eventScope,
+        // Filtra per i layer accesi; se nessuno e selezionato non chiede eventi.
+        calendarIds: visibleCalendarIds.value.join(',')
       }
     })
 
@@ -294,6 +391,16 @@ function capitalizeDate(value: string) {
       </button>
     </div>
 
+    <div v-if="layers.length" class="calendar-picker">
+      <label class="calendar-picker__label" for="calendar-view-select">Calendario</label>
+      <select id="calendar-view-select" v-model="selectedView" class="calendar-picker__select">
+        <option v-for="layer in layers" :key="layer.id" :value="layer.id">
+          {{ layer.name }}{{ layer.myIsPrimary ? ' ★' : '' }}
+        </option>
+        <option v-if="officialLayerIds.length > 1" value="official">Vista ufficiale (tutti gli integrati)</option>
+      </select>
+    </div>
+
     <p v-if="errorMessage" class="calendar-board__notice" :class="{ 'calendar-board__notice--cache': loadedFromCache }">
       {{ errorMessage }}
     </p>
@@ -316,7 +423,19 @@ function capitalizeDate(value: string) {
       <h3>{{ selectedOccurrence.title }}</h3>
       <p>{{ formatOccurrenceMeta(selectedOccurrence) }}</p>
       <p>{{ selectedOccurrence.calendarName }}<template v-if="selectedOccurrence.category"> - {{ selectedOccurrence.category }}</template></p>
-      <span v-if="selectedOccurrence.isRecurring" class="occurrence-detail__badge">Ricorrente</span>
+      <div class="occurrence-detail__tags">
+        <span v-if="selectedOccurrence.isRecurring" class="occurrence-detail__badge">Ricorrente</span>
+        <span v-if="selectedOccurrence.pinnedToPrimary" class="occurrence-detail__badge occurrence-detail__badge--pin">Nell'ufficiale</span>
+      </div>
+      <button
+        v-if="canPinOccurrence(selectedOccurrence)"
+        class="occurrence-detail__pin"
+        type="button"
+        :disabled="isPinning"
+        @click="togglePin(selectedOccurrence)"
+      >
+        {{ selectedOccurrence.pinnedToPrimary ? 'Rimuovi dall\'ufficiale' : 'Fissa nell\'ufficiale' }}
+      </button>
     </aside>
   </section>
 </template>
@@ -402,6 +521,71 @@ h2 {
 
 .view-switcher__button--active {
   box-shadow: 0 8px 18px rgba(17, 24, 39, 0.18);
+}
+
+.calendar-picker {
+  display: grid;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.calendar-picker__label {
+  color: var(--color-muted);
+  font-size: 0.76rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.calendar-picker__select {
+  min-height: 48px;
+  width: 100%;
+  padding: 0 13px;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--color-ink);
+  font: inherit;
+  font-weight: 800;
+}
+
+@media (min-width: 760px) {
+  .calendar-picker {
+    justify-items: start;
+  }
+
+  .calendar-picker__select {
+    width: min(360px, 100%);
+  }
+}
+
+.occurrence-detail__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.occurrence-detail__badge--pin {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.occurrence-detail__pin {
+  min-height: 44px;
+  width: 100%;
+  border: 0;
+  border-radius: 8px;
+  background: var(--color-ink);
+  color: #ffffff;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 900;
+}
+
+.occurrence-detail__pin:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .calendar-board__notice,

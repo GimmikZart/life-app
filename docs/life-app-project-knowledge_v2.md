@@ -408,7 +408,10 @@ calendars                         ← supporto multi-calendario
 calendar_members                  ← gestione condivisioni per calendario
   ├── calendar_id
   ├── user_id
-  └── permission (owner | editor | viewer)
+  ├── permission (owner | editor | viewer)
+  ├── status (pending | accepted | declined)
+  ├── is_primary (bool — calendario primario dell'utente, uno solo)
+  └── auto_integrate (bool — confluisce nella vista ufficiale dell'utente)
 
 properties                        ← Core Feature Proprietà
   ├── id, user_id, name
@@ -470,12 +473,15 @@ calendar_events
   ├── action_id (nullable — se è un'action schedulata)
   ├── source (internal | google | outlook | caldav)
   ├── external_id (nullable — ID nel calendario esterno)
-  └── visibility_default (clear | busy | hidden)
+  ├── visibility_default (clear | busy | hidden)
+  ├── category (nullable — stringa libera per regole di visibilità)
+  └── pinned_to_primary (bool — integrazione manuale nella vista ufficiale)
 
-relationships                     ← connessioni tra utenti
+relationships                     ← connessioni tra utenti (handshake reciproco)
   ├── id, user_id, target_user_id
   ├── relationship_type (stringa definita dall'utente)
-  └── visibility_rules (JSON — regole di visibilità per tipo)
+  ├── visibility_rules (JSON — regole di visibilità; default 'busy'/privato)
+  └── status (pending | accepted | declined — connessione attiva solo se entrambe le direzioni 'accepted')
 
 event_visibility_overrides        ← sovrascritture per singolo evento/utente
   ├── event_id

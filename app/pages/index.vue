@@ -41,7 +41,8 @@ const selectedRange = computed(() => ({
 const eventQuery = computed(() => ({
   from: selectedRange.value.from,
   to: selectedRange.value.to,
-  scope: 'mine'
+  // Vista ufficiale: primario + calendari integrati + eventi fissati.
+  scope: 'official'
 }))
 
 const selectedDateInput = computed({

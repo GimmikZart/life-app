@@ -30,14 +30,15 @@ export type EventVisibilityOverrideInput = {
 }
 
 export function parseVisibilityRules(value: unknown): VisibilityRules {
+  // Default privacy-first: una connessione mostra di base solo "occupato".
   if (!value || typeof value !== 'object') {
-    return { mode: 'clear', hiddenCategory: null }
+    return { mode: 'busy', hiddenCategory: null }
   }
 
   const rules = value as Record<string, unknown>
   const mode = typeof rules.mode === 'string' && relationshipVisibilityModes.includes(rules.mode as RelationshipVisibilityMode)
     ? rules.mode as RelationshipVisibilityMode
-    : 'clear'
+    : 'busy'
   const hiddenCategory = typeof rules.hiddenCategory === 'string' && rules.hiddenCategory.trim()
     ? rules.hiddenCategory.trim()
     : null

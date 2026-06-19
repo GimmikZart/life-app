@@ -45,7 +45,8 @@ export default defineEventHandler(async (event) => {
       endAt: payload.endAt,
       isRecurring: payload.isRecurring,
       recurrenceRule: payload.recurrenceRule,
-      visibilityDefault: payload.visibilityDefault
+      visibilityDefault: payload.visibilityDefault,
+      pinnedToPrimary: payload.pinnedToPrimary
     })
     .where(eq(calendarEvents.id, eventId))
     .returning()

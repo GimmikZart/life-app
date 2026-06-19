@@ -20,6 +20,8 @@ type CalendarItem = {
   type: CalendarType
   myPermission: MemberPermission
   myStatus: MemberStatus
+  myIsPrimary: boolean
+  myAutoIntegrate: boolean
   members: CalendarMember[]
 }
 
@@ -152,6 +154,24 @@ async function removeMember(calendar: CalendarItem, member: CalendarMember) {
   }, 'Membro rimosso.')
 }
 
+async function setPrimary(calendar: CalendarItem) {
+  await runCalendarAction(async () => {
+    await $fetch(`/api/calendars/${calendar.id}/preferences`, {
+      method: 'PATCH',
+      body: { isPrimary: true }
+    })
+  }, 'Calendario primario aggiornato.')
+}
+
+async function toggleAutoIntegrate(calendar: CalendarItem) {
+  await runCalendarAction(async () => {
+    await $fetch(`/api/calendars/${calendar.id}/preferences`, {
+      method: 'PATCH',
+      body: { autoIntegrate: !calendar.myAutoIntegrate }
+    })
+  }, 'Integrazione aggiornata.')
+}
+
 async function answerInvite(calendar: CalendarItem, status: 'accepted' | 'declined') {
   await runCalendarAction(async () => {
     await $fetch(`/api/calendars/${calendar.id}/members/me`, {
@@ -218,9 +238,34 @@ async function answerInvite(calendar: CalendarItem, status: 'accepted' | 'declin
         <div class="calendar-card__title">
           <span class="calendar-card__color" aria-hidden="true" />
           <div>
-            <h3>{{ calendar.name }}</h3>
+            <h3>
+              {{ calendar.name }}
+              <span v-if="calendar.myIsPrimary" class="badge badge--primary">Primario</span>
+            </h3>
             <p>{{ calendar.type }} - {{ calendar.myPermission }}</p>
           </div>
+        </div>
+
+        <div class="layer-prefs">
+          <button
+            v-if="!calendar.myIsPrimary && calendar.myPermission === 'owner'"
+            class="button button--ghost"
+            type="button"
+            :disabled="isSubmitting"
+            @click="setPrimary(calendar)"
+          >
+            Imposta come primario
+          </button>
+
+          <label class="toggle" :class="{ 'toggle--locked': calendar.myIsPrimary }">
+            <input
+              type="checkbox"
+              :checked="calendar.myAutoIntegrate"
+              :disabled="isSubmitting || calendar.myIsPrimary"
+              @change="toggleAutoIntegrate(calendar)"
+            >
+            <span>Integra nella vista ufficiale</span>
+          </label>
         </div>
 
         <form class="calendar-form calendar-form--compact" @submit.prevent="updateCalendar(calendar)">
@@ -473,6 +518,55 @@ select:disabled {
 .button--danger {
   background: #fee2e2;
   color: #991b1b;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 900;
+  vertical-align: middle;
+}
+
+.badge--primary {
+  background: var(--color-ink);
+  color: #ffffff;
+}
+
+.layer-prefs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-ink);
+  font-size: 0.9rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.toggle input {
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+.toggle--locked {
+  opacity: 0.62;
+  cursor: not-allowed;
 }
 
 .calendar-card__title,

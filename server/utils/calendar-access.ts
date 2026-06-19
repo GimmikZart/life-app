@@ -12,7 +12,9 @@ export async function getCalendarMembership(calendarId: string, userId: string) 
       calendarId: calendarMembers.calendarId,
       userId: calendarMembers.userId,
       permission: calendarMembers.permission,
-      status: calendarMembers.status
+      status: calendarMembers.status,
+      isPrimary: calendarMembers.isPrimary,
+      autoIntegrate: calendarMembers.autoIntegrate
     })
     .from(calendarMembers)
     .where(and(eq(calendarMembers.calendarId, calendarId), eq(calendarMembers.userId, userId)))

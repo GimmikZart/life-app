@@ -20,6 +20,7 @@ export function parseEventPayload(body: Record<string, unknown>) {
     && eventVisibilityValues.includes(body.visibilityDefault as EventVisibility)
     ? body.visibilityDefault as EventVisibility
     : 'clear'
+  const pinnedToPrimary = Boolean(body.pinnedToPrimary)
 
   if (!calendarId) {
     throw createError({ statusCode: 400, statusMessage: 'Calendar id is required.' })
@@ -51,7 +52,8 @@ export function parseEventPayload(body: Record<string, unknown>) {
     endAt,
     isRecurring,
     recurrenceRule,
-    visibilityDefault
+    visibilityDefault,
+    pinnedToPrimary
   }
 }
 

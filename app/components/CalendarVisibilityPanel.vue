@@ -2,7 +2,7 @@
 type VisibilityMode = 'clear' | 'busy' | 'hide_category'
 type EventVisibility = 'clear' | 'busy' | 'hidden'
 
-type RelationshipItem = {
+type Connection = {
   id: string
   targetUserId: string
   targetEmail: string
@@ -12,6 +12,28 @@ type RelationshipItem = {
     mode: VisibilityMode
     hiddenCategory: string | null
   }
+}
+
+type IncomingRequest = {
+  id: string
+  requesterUserId: string
+  requesterEmail: string
+  requesterName: string | null
+  relationshipType: string
+}
+
+type OutgoingRequest = {
+  id: string
+  targetUserId: string
+  targetEmail: string
+  targetName: string | null
+  relationshipType: string
+}
+
+type RelationshipsResponse = {
+  connections: Connection[]
+  incomingRequests: IncomingRequest[]
+  outgoingRequests: OutgoingRequest[]
 }
 
 type VisibilityOverride = {
@@ -51,7 +73,7 @@ rangeTo.setDate(rangeTo.getDate() + 90)
 const relationshipForm = reactive({
   targetEmail: '',
   relationshipType: '',
-  mode: 'clear' as VisibilityMode,
+  mode: 'busy' as VisibilityMode,
   hiddenCategory: ''
 })
 const overrideForm = reactive({
@@ -63,8 +85,8 @@ const actionMessage = ref('')
 const errorMessage = ref('')
 const isSubmitting = ref(false)
 
-const { data: relationshipData, refresh: refreshRelationships } = await useFetch<{ relationships: RelationshipItem[] }>('/api/relationships', {
-  default: () => ({ relationships: [] })
+const { data: relationshipData, refresh: refreshRelationships } = await useFetch<RelationshipsResponse>('/api/relationships', {
+  default: () => ({ connections: [], incomingRequests: [], outgoingRequests: [] })
 })
 const { data: overrideData, refresh: refreshOverrides } = await useFetch<{ overrides: VisibilityOverride[] }>('/api/event-visibility-overrides', {
   default: () => ({ overrides: [] })
@@ -79,9 +101,9 @@ const { data: eventData } = await useFetch<CalendarEventsResponse>('/api/calenda
 
 const sourceEvents = computed(() => eventData.value?.events ?? [])
 
-async function saveRelationship() {
+async function inviteConnection() {
   await runAction(async () => {
-    await $fetch('/api/relationships', {
+    const result = await $fetch<{ connected: boolean }>('/api/relationships', {
       method: 'POST',
       body: {
         targetEmail: relationshipForm.targetEmail,
@@ -95,34 +117,53 @@ async function saveRelationship() {
 
     relationshipForm.targetEmail = ''
     relationshipForm.relationshipType = ''
-    relationshipForm.mode = 'clear'
+    relationshipForm.mode = 'busy'
     relationshipForm.hiddenCategory = ''
     await refreshRelationships()
-  }, 'Relazione salvata.')
+
+    return result.connected ? 'Connessione attivata.' : 'Richiesta inviata.'
+  })
 }
 
-async function updateRelationship(relationship: RelationshipItem) {
+async function respondRequest(request: IncomingRequest, action: 'accept' | 'decline') {
   await runAction(async () => {
-    await $fetch(`/api/relationships/${relationship.id}`, {
+    await $fetch(`/api/relationships/${request.id}/respond`, {
+      method: 'POST',
+      body: { action }
+    })
+
+    await refreshRelationships()
+
+    return action === 'accept' ? 'Richiesta accettata.' : 'Richiesta rifiutata.'
+  })
+}
+
+async function updateConnection(connection: Connection) {
+  await runAction(async () => {
+    await $fetch(`/api/relationships/${connection.id}`, {
       method: 'PATCH',
       body: {
-        relationshipType: relationship.relationshipType,
-        visibilityRules: relationship.visibilityRules
+        relationshipType: connection.relationshipType,
+        visibilityRules: connection.visibilityRules
       }
     })
 
     await refreshRelationships()
-  }, 'Regole relazione aggiornate.')
+
+    return 'Regole aggiornate.'
+  })
 }
 
-async function deleteRelationship(relationship: RelationshipItem) {
+async function removeConnection(id: string) {
   await runAction(async () => {
-    await $fetch(`/api/relationships/${relationship.id}`, {
+    await $fetch(`/api/relationships/${id}`, {
       method: 'DELETE'
     })
 
     await refreshRelationships()
-  }, 'Relazione eliminata.')
+
+    return 'Connessione rimossa.'
+  })
 }
 
 async function saveOverride() {
@@ -149,19 +190,29 @@ async function deleteOverride(override: VisibilityOverride) {
   }, 'Override eliminato.')
 }
 
-async function runAction(action: () => Promise<void>, successMessage: string) {
+async function runAction(action: () => Promise<string | void>, fallbackMessage = 'Operazione completata.') {
   actionMessage.value = ''
   errorMessage.value = ''
   isSubmitting.value = true
 
   try {
-    await action()
-    actionMessage.value = successMessage
+    const message = await action()
+    actionMessage.value = typeof message === 'string' ? message : fallbackMessage
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : 'Operazione visibilita non riuscita.'
+    errorMessage.value = getActionErrorMessage(error)
   } finally {
     isSubmitting.value = false
   }
+}
+
+function getActionErrorMessage(error: unknown) {
+  if (error instanceof Error) {
+    const fetchError = error as Error & { data?: { statusMessage?: string } }
+
+    return fetchError.data?.statusMessage ?? error.message
+  }
+
+  return 'Operazione visibilita non riuscita.'
 }
 
 function formatEventLabel(event: CalendarEvent) {
@@ -181,10 +232,11 @@ function endOfLocalDate(date: Date) {
   <section class="visibility-panel">
     <div class="visibility-panel__header">
       <p class="visibility-panel__eyebrow">Privacy calendario</p>
-      <h2>Relazioni e visibilita</h2>
+      <h2>Connessioni e visibilita</h2>
       <p>
-        Definisci cosa vede una persona dei tuoi eventi. Gli override per singolo
-        evento hanno sempre priorita sulle regole di relazione.
+        Connettiti con altre persone (richiesta reciproca: l'altro deve accettare).
+        Di default vedono solo che sei "occupato"; decidi tu cosa mostrare in chiaro.
+        Gli override per singolo evento hanno sempre priorita sulle regole di connessione.
       </p>
     </div>
 
@@ -196,10 +248,10 @@ function endOfLocalDate(date: Date) {
     </p>
 
     <section class="visibility-card">
-      <h3>Nuova relazione</h3>
-      <form class="visibility-form" @submit.prevent="saveRelationship">
+      <h3>Invita una persona</h3>
+      <form class="visibility-form" @submit.prevent="inviteConnection">
         <label>
-          Email target
+          Email
           <input v-model="relationshipForm.targetEmail" type="email" placeholder="utente@esempio.it" required>
         </label>
         <label>
@@ -207,7 +259,7 @@ function endOfLocalDate(date: Date) {
           <input v-model="relationshipForm.relationshipType" type="text" placeholder="Partner, amico, famiglia..." required>
         </label>
         <label>
-          Regola
+          Cosa puo vedere
           <select v-model="relationshipForm.mode">
             <option v-for="mode in modes" :key="mode.value" :value="mode.value">
               {{ mode.label }}
@@ -219,49 +271,88 @@ function endOfLocalDate(date: Date) {
           <input v-model="relationshipForm.hiddenCategory" type="text" placeholder="Es. lavoro" required>
         </label>
         <button class="button button--primary" type="submit" :disabled="isSubmitting">
-          Salva relazione
+          Invita
         </button>
       </form>
     </section>
 
+    <section v-if="relationshipData.incomingRequests.length" class="visibility-list">
+      <h3>Richieste ricevute</h3>
+      <article
+        v-for="request in relationshipData.incomingRequests"
+        :key="request.id"
+        class="visibility-row visibility-row--compact"
+      >
+        <div>
+          <strong>{{ request.requesterName || request.requesterEmail }}</strong>
+          <span>{{ request.requesterEmail }} - {{ request.relationshipType }}</span>
+        </div>
+        <div class="inline-actions">
+          <button class="button button--primary" type="button" :disabled="isSubmitting" @click="respondRequest(request, 'accept')">
+            Accetta
+          </button>
+          <button class="button button--ghost" type="button" :disabled="isSubmitting" @click="respondRequest(request, 'decline')">
+            Rifiuta
+          </button>
+        </div>
+      </article>
+    </section>
+
+    <section v-if="relationshipData.outgoingRequests.length" class="visibility-list">
+      <h3>Richieste inviate</h3>
+      <article
+        v-for="request in relationshipData.outgoingRequests"
+        :key="request.id"
+        class="visibility-row visibility-row--compact"
+      >
+        <div>
+          <strong>{{ request.targetName || request.targetEmail }}</strong>
+          <span>{{ request.targetEmail }} - in attesa di risposta</span>
+        </div>
+        <button class="button button--ghost" type="button" :disabled="isSubmitting" @click="removeConnection(request.id)">
+          Annulla
+        </button>
+      </article>
+    </section>
+
     <section class="visibility-list">
-      <h3>Relazioni attive</h3>
-      <p v-if="!relationshipData.relationships.length" class="empty-state">
-        Nessuna relazione configurata.
+      <h3>Connessioni attive</h3>
+      <p v-if="!relationshipData.connections.length" class="empty-state">
+        Nessuna connessione attiva.
       </p>
 
       <article
-        v-for="relationship in relationshipData.relationships"
-        :key="relationship.id"
+        v-for="connection in relationshipData.connections"
+        :key="connection.id"
         class="visibility-row"
       >
         <div class="visibility-row__identity">
-          <strong>{{ relationship.targetName || relationship.targetEmail }}</strong>
-          <span>{{ relationship.targetEmail }}</span>
+          <strong>{{ connection.targetName || connection.targetEmail }}</strong>
+          <span>{{ connection.targetEmail }}</span>
         </div>
-        <form class="visibility-form visibility-form--inline" @submit.prevent="updateRelationship(relationship)">
+        <form class="visibility-form visibility-form--inline" @submit.prevent="updateConnection(connection)">
           <label>
             Tipo
-            <input v-model="relationship.relationshipType" type="text" required>
+            <input v-model="connection.relationshipType" type="text" required>
           </label>
           <label>
-            Regola
-            <select v-model="relationship.visibilityRules.mode">
+            Cosa vede
+            <select v-model="connection.visibilityRules.mode">
               <option v-for="mode in modes" :key="mode.value" :value="mode.value">
                 {{ mode.label }}
               </option>
             </select>
           </label>
-          <label v-if="relationship.visibilityRules.mode === 'hide_category'">
+          <label v-if="connection.visibilityRules.mode === 'hide_category'">
             Categoria
-            <input v-model="relationship.visibilityRules.hiddenCategory" type="text" required>
+            <input v-model="connection.visibilityRules.hiddenCategory" type="text" required>
           </label>
           <div class="inline-actions">
             <button class="button button--secondary" type="submit" :disabled="isSubmitting">
               Aggiorna
             </button>
-            <button class="button button--ghost" type="button" :disabled="isSubmitting" @click="deleteRelationship(relationship)">
-              Elimina
+            <button class="button button--ghost" type="button" :disabled="isSubmitting" @click="removeConnection(connection.id)">
+              Rimuovi
             </button>
           </div>
         </form>

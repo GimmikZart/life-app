@@ -12,7 +12,9 @@ export default defineEventHandler(async (event) => {
     .select({
       calendarId: calendarMembers.calendarId,
       permission: calendarMembers.permission,
-      status: calendarMembers.status
+      status: calendarMembers.status,
+      isPrimary: calendarMembers.isPrimary,
+      autoIntegrate: calendarMembers.autoIntegrate
     })
     .from(calendarMembers)
     .where(eq(calendarMembers.userId, currentUser.id))
@@ -59,6 +61,8 @@ export default defineEventHandler(async (event) => {
     ...calendar,
     myPermission: membershipByCalendar.get(calendar.id)?.permission ?? 'viewer',
     myStatus: membershipByCalendar.get(calendar.id)?.status ?? 'pending',
+    myIsPrimary: membershipByCalendar.get(calendar.id)?.isPrimary ?? false,
+    myAutoIntegrate: membershipByCalendar.get(calendar.id)?.autoIntegrate ?? false,
     members: memberRows.filter((member) => member.calendarId === calendar.id)
   }))
 

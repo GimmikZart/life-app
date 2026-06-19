@@ -12,6 +12,7 @@ export type CalendarEventForExpansion = {
   isRecurring: boolean
   recurrenceRule: string | null
   visibilityDefault: 'clear' | 'busy' | 'hidden'
+  pinnedToPrimary: boolean
 }
 
 export type CalendarEventOccurrence = {
@@ -26,6 +27,7 @@ export type CalendarEventOccurrence = {
   endAt: string
   isRecurring: boolean
   visibilityDefault: 'clear' | 'busy' | 'hidden'
+  pinnedToPrimary: boolean
 }
 
 export function expandCalendarEvents(
@@ -91,6 +93,7 @@ function toOccurrence(
     startAt: startAt.toISOString(),
     endAt: endAt.toISOString(),
     isRecurring: event.isRecurring,
-    visibilityDefault: event.visibilityDefault
+    visibilityDefault: event.visibilityDefault,
+    pinnedToPrimary: event.pinnedToPrimary
   }
 }

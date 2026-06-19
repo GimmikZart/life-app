@@ -1,3 +1,5 @@
+import { and, eq } from 'drizzle-orm'
+
 import { useDatabase } from '../../database/client'
 import { calendarMembers, calendars } from '../../database/schema'
 import { requireAuthenticatedUser } from '../../utils/auth'
@@ -27,11 +29,26 @@ export default defineEventHandler(async (event) => {
       })
     }
 
+    // Se l'utente non ha ancora un primario, il primo calendario lo diventa
+    // (rete di sicurezza: alla registrazione il trigger ne crea gia uno).
+    const [existingPrimary] = await tx
+      .select({ calendarId: calendarMembers.calendarId })
+      .from(calendarMembers)
+      .where(and(
+        eq(calendarMembers.userId, currentUser.id),
+        eq(calendarMembers.isPrimary, true)
+      ))
+      .limit(1)
+
+    const isPrimary = !existingPrimary
+
     await tx.insert(calendarMembers).values({
       calendarId: calendar.id,
       userId: currentUser.id,
       permission: 'owner',
-      status: 'accepted'
+      status: 'accepted',
+      isPrimary,
+      autoIntegrate: isPrimary
     })
 
     return calendar
