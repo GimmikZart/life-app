@@ -11,6 +11,7 @@ type CalendarOccurrence = {
   endAt: string
   isRecurring: boolean
   visibilityDefault: 'clear' | 'busy' | 'hidden'
+  association?: { userId: string; name: string | null; color: string | null; icon: string | null } | null
 }
 
 type CalendarEventsResponse = {
@@ -240,14 +241,14 @@ function readTodayCache() {
           v-for="occurrence in dayOccurrences"
           :key="occurrence.id"
           class="agenda-row"
-          :style="{ '--event-color': occurrence.calendarColor }"
+          :style="{ '--event-color': occurrence.association?.color || occurrence.calendarColor }"
         >
           <time class="agenda-row__time" :datetime="occurrence.startAt">
             {{ formatTime(occurrence.startAt) }}
           </time>
           <span class="agenda-row__marker" aria-hidden="true" />
           <div class="agenda-row__content">
-            <strong>{{ occurrence.title }}</strong>
+            <strong><template v-if="occurrence.association?.icon">{{ occurrence.association.icon }} </template>{{ occurrence.title }}</strong>
             <span>{{ formatDuration(occurrence) }} - {{ occurrence.calendarName }}</span>
             <small v-if="occurrence.category">{{ occurrence.category }}</small>
           </div>

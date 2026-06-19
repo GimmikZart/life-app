@@ -1,7 +1,6 @@
 <template>
   <main class="calendar-page">
     <CalendarBoard event-scope="all" />
-    <CalendarSpeedDial />
   </main>
 </template>
 

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 type CalendarPermission = 'owner' | 'editor' | 'viewer'
 type EventVisibility = 'clear' | 'busy' | 'hidden'
+type RecurrenceFrequency = 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly' | 'custom'
+type RecurrenceUnit = 'daily' | 'weekly' | 'monthly' | 'yearly'
 
 type CalendarOption = {
   id: string
@@ -21,58 +23,72 @@ type CalendarEvent = {
   isRecurring: boolean
   recurrenceRule: string | null
   visibilityDefault: EventVisibility
-}
-
-type CalendarOccurrence = {
-  id: string
-  eventId: string
-  calendarId: string
-  calendarName: string
-  calendarColor: string
-  title: string
-  category: string | null
-  startAt: string
-  endAt: string
-  isRecurring: boolean
-  visibilityDefault: EventVisibility
+  association: { userId: string; name: string | null; color: string | null; icon: string | null } | null
 }
 
 type CalendarEventsResponse = {
   events: CalendarEvent[]
-  occurrences: CalendarOccurrence[]
+  occurrences: unknown[]
 }
+
+type Connection = { targetUserId: string; targetEmail: string; targetName: string | null }
+type RelationshipsResponse = { connections: Connection[]; incomingRequests: unknown[]; outgoingRequests: unknown[] }
+
+const iconOptions = ['', '❤️', '👤', '👥', '💼', '🎉', '🏠', '🍽️']
 
 const props = defineProps<{
   calendars: CalendarOption[]
 }>()
 
-const today = new Date()
-const defaultRangeTo = new Date(today)
-defaultRangeTo.setDate(defaultRangeTo.getDate() + 30)
+const visibilityOptions: { value: EventVisibility; label: string }[] = [
+  { value: 'clear', label: 'In chiaro' },
+  { value: 'busy', label: 'Solo occupato' },
+  { value: 'hidden', label: 'Nascosto' }
+]
+const frequencyOptions: { value: RecurrenceFrequency; label: string }[] = [
+  { value: 'none', label: 'Non si ripete' },
+  { value: 'daily', label: 'Ogni giorno' },
+  { value: 'weekly', label: 'Ogni settimana' },
+  { value: 'monthly', label: 'Ogni mese' },
+  { value: 'yearly', label: 'Ogni anno' },
+  { value: 'custom', label: 'Personalizzato…' }
+]
+const customUnitOptions: { value: RecurrenceUnit; label: string }[] = [
+  { value: 'daily', label: 'giorni' },
+  { value: 'weekly', label: 'settimane' },
+  { value: 'monthly', label: 'mesi' },
+  { value: 'yearly', label: 'anni' }
+]
+const freqKeyword: Record<RecurrenceUnit, string> = {
+  daily: 'DAILY',
+  weekly: 'WEEKLY',
+  monthly: 'MONTHLY',
+  yearly: 'YEARLY'
+}
 
-const rangeFrom = ref(formatDateInput(today))
-const rangeTo = ref(formatDateInput(defaultRangeTo))
-const eventQuery = computed(() => ({
-  from: startOfLocalDate(rangeFrom.value).toISOString(),
-  to: endOfLocalDate(rangeTo.value).toISOString()
-}))
+// Mostriamo gli eventi creati in una finestra ampia (per modificarli/eliminarli),
+// senza esporre un filtro di periodo all'utente.
+const listFrom = addDays(new Date(), -7)
+const listTo = addDays(new Date(), 365)
 
-const eventCacheKey = 'life-app:calendar-events-panel:latest'
 const { data: apiData, pending, refresh } = await useFetch<CalendarEventsResponse>('/api/calendar-events', {
-  query: eventQuery,
-  default: () => ({
-    events: [],
-    occurrences: []
-  })
+  query: {
+    from: startOfLocalDate(listFrom).toISOString(),
+    to: endOfLocalDate(listTo).toISOString(),
+    scope: 'mine'
+  },
+  default: () => ({ events: [], occurrences: [] })
 })
-const localData = ref<CalendarEventsResponse>(readCachedEvents() ?? {
-  events: [],
-  occurrences: []
+
+const { data: relationshipData } = await useFetch<RelationshipsResponse>('/api/relationships', {
+  default: () => ({ connections: [], incomingRequests: [], outgoingRequests: [] })
 })
+const connections = computed(() => relationshipData.value?.connections ?? [])
 
 const writableCalendars = computed(() =>
   props.calendars.filter((calendar) => calendar.myPermission === 'owner' || calendar.myPermission === 'editor')
 )
+const sourceEvents = computed(() => apiData.value?.events ?? [])
 
 const eventForm = reactive({
   id: '',
@@ -81,24 +97,22 @@ const eventForm = reactive({
   category: '',
   startAt: formatDateTimeLocal(roundToNextHour(new Date())),
   endAt: formatDateTimeLocal(addHours(roundToNextHour(new Date()), 1)),
-  isRecurring: false,
-  recurrenceRule: 'FREQ=WEEKLY;COUNT=4',
-  visibilityDefault: 'clear' as EventVisibility
+  visibilityDefault: 'clear' as EventVisibility,
+  recurrenceFrequency: 'none' as RecurrenceFrequency,
+  customInterval: 2,
+  customUnit: 'weekly' as RecurrenceUnit,
+  recurrenceUntil: '',
+  associatedUserId: '',
+  associatedColor: '#db2777',
+  associatedIcon: ''
 })
+// Contatto associato presente al caricamento (per sapere se va rimosso al salvataggio).
+const loadedAssociatedUserId = ref('')
 
 const actionMessage = ref('')
 const errorMessage = ref('')
 const isSubmitting = ref(false)
 const isEditing = computed(() => Boolean(eventForm.id))
-
-watch(apiData, (nextData) => {
-  if (!nextData) {
-    return
-  }
-
-  localData.value = nextData
-  writeCachedEvents(nextData)
-}, { immediate: true, deep: true })
 
 watch(writableCalendars, (calendars) => {
   if (!eventForm.calendarId && calendars[0]) {
@@ -113,16 +127,15 @@ function resetEventForm() {
   eventForm.category = ''
   eventForm.startAt = formatDateTimeLocal(roundToNextHour(new Date()))
   eventForm.endAt = formatDateTimeLocal(addHours(roundToNextHour(new Date()), 1))
-  eventForm.isRecurring = false
-  eventForm.recurrenceRule = 'FREQ=WEEKLY;COUNT=4'
   eventForm.visibilityDefault = 'clear'
-}
-
-function cloneCalendarEventsResponse(payload: CalendarEventsResponse): CalendarEventsResponse {
-  return {
-    events: payload.events.map((event) => ({ ...event })),
-    occurrences: payload.occurrences.map((occurrence) => ({ ...occurrence }))
-  }
+  eventForm.recurrenceFrequency = 'none'
+  eventForm.customInterval = 2
+  eventForm.customUnit = 'weekly'
+  eventForm.recurrenceUntil = ''
+  eventForm.associatedUserId = ''
+  eventForm.associatedColor = '#db2777'
+  eventForm.associatedIcon = ''
+  loadedAssociatedUserId.value = ''
 }
 
 function editEvent(event: CalendarEvent) {
@@ -132,194 +145,179 @@ function editEvent(event: CalendarEvent) {
   eventForm.category = event.category ?? ''
   eventForm.startAt = formatDateTimeLocal(new Date(event.startAt))
   eventForm.endAt = formatDateTimeLocal(new Date(event.endAt))
-  eventForm.isRecurring = event.isRecurring
-  eventForm.recurrenceRule = event.recurrenceRule ?? 'FREQ=WEEKLY;COUNT=4'
   eventForm.visibilityDefault = event.visibilityDefault
+  eventForm.associatedUserId = event.association?.userId ?? ''
+  eventForm.associatedColor = event.association?.color ?? '#db2777'
+  eventForm.associatedIcon = event.association?.icon ?? ''
+  loadedAssociatedUserId.value = event.association?.userId ?? ''
+  applyRecurrenceFromRule(event.isRecurring ? event.recurrenceRule : null)
+
+  if (import.meta.client) {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
 }
 
 async function saveEvent() {
-  const wasEditing = isEditing.value
-  const optimisticId = eventForm.id || `optimistic-${Date.now()}`
-  const previousData = cloneCalendarEventsResponse(localData.value)
-  const optimisticEvent = buildOptimisticEvent(optimisticId)
-  applyOptimisticEvent(optimisticEvent)
+  const recurrenceRule = buildRecurrenceRule()
+  const body = {
+    calendarId: eventForm.calendarId,
+    title: eventForm.title,
+    category: eventForm.category || null,
+    startAt: new Date(eventForm.startAt).toISOString(),
+    endAt: new Date(eventForm.endAt).toISOString(),
+    isRecurring: recurrenceRule !== null,
+    recurrenceRule,
+    visibilityDefault: eventForm.visibilityDefault
+  }
+  const wasEditing = Boolean(eventForm.id)
+  const associatedUserId = eventForm.associatedUserId
+  const associatedColor = eventForm.associatedColor
+  const associatedIcon = eventForm.associatedIcon
+  const previousAssociated = loadedAssociatedUserId.value
 
   await runEventAction(async () => {
-    const body = {
-      calendarId: eventForm.calendarId,
-      title: eventForm.title,
-      category: eventForm.category || null,
-      startAt: new Date(eventForm.startAt).toISOString(),
-      endAt: new Date(eventForm.endAt).toISOString(),
-      isRecurring: eventForm.isRecurring,
-      recurrenceRule: eventForm.isRecurring ? eventForm.recurrenceRule : null,
-      visibilityDefault: eventForm.visibilityDefault
+    let eventId = eventForm.id
+
+    if (wasEditing) {
+      await $fetch(`/api/calendar-events/${eventId}`, { method: 'PATCH', body })
+    } else {
+      const created = await $fetch<{ event: { id: string } }>('/api/calendar-events', { method: 'POST', body })
+      eventId = created.event.id
     }
 
-    if (eventForm.id) {
-      await $fetch(`/api/calendar-events/${eventForm.id}`, {
-        method: 'PATCH',
-        body
-      })
-    } else {
-      await $fetch('/api/calendar-events', {
+    // Riconcilia l'associazione a un contatto.
+    if (associatedUserId) {
+      await $fetch('/api/event-associations', {
         method: 'POST',
-        body
+        body: { eventId, associatedUserId, color: associatedColor, icon: associatedIcon || null }
       })
+
+      if (previousAssociated && previousAssociated !== associatedUserId) {
+        await $fetch(`/api/event-associations/${eventId}/${previousAssociated}` as string, { method: 'DELETE' })
+      }
+    } else if (previousAssociated) {
+      await $fetch(`/api/event-associations/${eventId}/${previousAssociated}` as string, { method: 'DELETE' })
     }
 
     resetEventForm()
-  }, wasEditing ? 'Evento aggiornato.' : 'Evento creato.', previousData)
+  }, wasEditing ? 'Evento aggiornato.' : 'Evento creato.')
 }
 
 async function deleteEvent(event: CalendarEvent) {
-  const previousData = cloneCalendarEventsResponse(localData.value)
-  localData.value = {
-    events: localData.value.events.filter((item) => item.id !== event.id),
-    occurrences: localData.value.occurrences.filter((occurrence) => occurrence.eventId !== event.id)
-  }
-  writeCachedEvents(localData.value)
-
   await runEventAction(async () => {
-    await $fetch(`/api/calendar-events/${event.id}`, {
-      method: 'DELETE'
-    })
+    await $fetch(`/api/calendar-events/${event.id}`, { method: 'DELETE' })
 
     if (eventForm.id === event.id) {
       resetEventForm()
     }
-  }, 'Evento eliminato.', previousData)
+  }, 'Evento eliminato.')
 }
 
-async function runEventAction(
-  action: () => Promise<void>,
-  successMessage: string,
-  rollbackData?: CalendarEventsResponse
-) {
+async function runEventAction(action: () => Promise<void>, successMessage: string) {
   actionMessage.value = ''
   errorMessage.value = ''
   isSubmitting.value = true
 
   try {
     await action()
-    await refreshAndSync()
+    await refresh()
     actionMessage.value = successMessage
   } catch (error) {
-    if (rollbackData) {
-      localData.value = rollbackData
-      writeCachedEvents(rollbackData)
-    }
-
-    errorMessage.value = error instanceof Error ? error.message : 'Operazione evento non riuscita.'
+    const fetchError = error as Error & { data?: { statusMessage?: string } }
+    errorMessage.value = fetchError?.data?.statusMessage ?? (error instanceof Error ? error.message : 'Operazione non riuscita.')
   } finally {
     isSubmitting.value = false
   }
 }
 
-async function refreshAndSync() {
-  await refresh()
+// Costruisce la RRULE a partire dalla UI semplificata (null se non ricorrente).
+function buildRecurrenceRule(): string | null {
+  const frequency = eventForm.recurrenceFrequency
 
-  if (apiData.value) {
-    localData.value = apiData.value
-    writeCachedEvents(apiData.value)
+  if (frequency === 'none') {
+    return null
   }
+
+  const unit: RecurrenceUnit = frequency === 'custom' ? eventForm.customUnit : frequency
+  const interval = frequency === 'custom' ? Math.max(1, Math.floor(eventForm.customInterval)) : 1
+  const parts = [`FREQ=${freqKeyword[unit]}`, `INTERVAL=${interval}`]
+
+  if (eventForm.recurrenceUntil) {
+    // UNTIL in UTC a fine giornata selezionata.
+    const until = new Date(`${eventForm.recurrenceUntil}T23:59:59Z`)
+    parts.push(`UNTIL=${formatRruleUntil(until)}`)
+  }
+
+  return parts.join(';')
 }
 
-function buildOptimisticEvent(id: string): CalendarEvent {
-  const calendar = props.calendars.find((item) => item.id === eventForm.calendarId)
+// Popola la UI di ricorrenza leggendo una RRULE esistente (best-effort).
+function applyRecurrenceFromRule(rule: string | null) {
+  eventForm.recurrenceFrequency = 'none'
+  eventForm.customInterval = 2
+  eventForm.customUnit = 'weekly'
+  eventForm.recurrenceUntil = ''
 
-  return {
-    id,
-    calendarId: eventForm.calendarId,
-    calendarName: calendar?.name ?? 'Calendario',
-    calendarColor: calendar?.color ?? '#2563eb',
-    title: eventForm.title,
-    category: eventForm.category || null,
-    startAt: new Date(eventForm.startAt).toISOString(),
-    endAt: new Date(eventForm.endAt).toISOString(),
-    isRecurring: eventForm.isRecurring,
-    recurrenceRule: eventForm.isRecurring ? eventForm.recurrenceRule : null,
-    visibilityDefault: eventForm.visibilityDefault
-  }
-}
-
-function applyOptimisticEvent(event: CalendarEvent) {
-  const nextEvents = [
-    ...localData.value.events.filter((item) => item.id !== event.id),
-    event
-  ].sort((left, right) => left.startAt.localeCompare(right.startAt))
-  const nextOccurrences = [
-    ...localData.value.occurrences.filter((occurrence) => occurrence.eventId !== event.id),
-    toOccurrence(event)
-  ].sort((left, right) => left.startAt.localeCompare(right.startAt))
-
-  localData.value = {
-    events: nextEvents,
-    occurrences: nextOccurrences
-  }
-  writeCachedEvents(localData.value)
-}
-
-function toOccurrence(event: CalendarEvent): CalendarOccurrence {
-  return {
-    id: event.id,
-    eventId: event.id,
-    calendarId: event.calendarId,
-    calendarName: event.calendarName,
-    calendarColor: event.calendarColor,
-    title: event.title,
-    category: event.category,
-    startAt: event.startAt,
-    endAt: event.endAt,
-    isRecurring: event.isRecurring,
-    visibilityDefault: event.visibilityDefault
-  }
-}
-
-function writeCachedEvents(payload: CalendarEventsResponse) {
-  if (!import.meta.client) {
+  if (!rule) {
     return
   }
 
-  localStorage.setItem(eventCacheKey, JSON.stringify(payload))
+  const freqMatch = rule.match(/FREQ=(DAILY|WEEKLY|MONTHLY|YEARLY)/i)
+  const intervalMatch = rule.match(/INTERVAL=(\d+)/i)
+  const untilMatch = rule.match(/UNTIL=(\d{8})/i)
+  const unit = (Object.keys(freqKeyword) as RecurrenceUnit[]).find(
+    (key) => freqKeyword[key] === freqMatch?.[1]?.toUpperCase()
+  ) ?? 'weekly'
+  const interval = intervalMatch ? Number(intervalMatch[1]) : 1
+
+  if (interval > 1) {
+    eventForm.recurrenceFrequency = 'custom'
+    eventForm.customUnit = unit
+    eventForm.customInterval = interval
+  } else {
+    eventForm.recurrenceFrequency = unit
+  }
+
+  if (untilMatch?.[1]) {
+    const value = untilMatch[1]
+    eventForm.recurrenceUntil = `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}`
+  }
 }
 
-function readCachedEvents() {
-  if (!import.meta.client) {
-    return null
-  }
-
-  const cached = localStorage.getItem(eventCacheKey)
-
-  if (!cached) {
-    return null
-  }
-
-  try {
-    return JSON.parse(cached) as CalendarEventsResponse
-  } catch {
-    return null
-  }
+function formatRruleUntil(date: Date) {
+  return `${date.getUTCFullYear()}${pad(date.getUTCMonth() + 1)}${pad(date.getUTCDate())}T${pad(date.getUTCHours())}${pad(date.getUTCMinutes())}${pad(date.getUTCSeconds())}Z`
 }
 
-function formatOccurrenceTime(occurrence: CalendarOccurrence) {
-  const start = new Date(occurrence.startAt)
-  const end = new Date(occurrence.endAt)
+function recurrenceSummary(event: CalendarEvent) {
+  if (!event.isRecurring) {
+    return 'singolo'
+  }
 
-  return `${start.toLocaleDateString('it-IT', {
+  const rule = event.recurrenceRule ?? ''
+  const freq = rule.match(/FREQ=(DAILY|WEEKLY|MONTHLY|YEARLY)/i)?.[1]?.toUpperCase()
+  const interval = Number(rule.match(/INTERVAL=(\d+)/i)?.[1] ?? '1')
+  const unitKey = (Object.keys(freqKeyword) as RecurrenceUnit[]).find((key) => freqKeyword[key] === freq) ?? 'weekly'
+  const labels: Record<RecurrenceUnit, [string, string]> = {
+    daily: ['ogni giorno', 'giorni'],
+    weekly: ['ogni settimana', 'settimane'],
+    monthly: ['ogni mese', 'mesi'],
+    yearly: ['ogni anno', 'anni']
+  }
+
+  return interval > 1 ? `ogni ${interval} ${labels[unitKey][1]}` : labels[unitKey][0]
+}
+
+function formatEventDate(value: string) {
+  return new Date(value).toLocaleString('it-IT', {
     day: '2-digit',
-    month: 'short'
-  })} - ${start.toLocaleTimeString('it-IT', {
+    month: 'short',
     hour: '2-digit',
     minute: '2-digit'
-  })}-${end.toLocaleTimeString('it-IT', {
-    hour: '2-digit',
-    minute: '2-digit'
-  })}`
+  })
 }
 
-function formatDateInput(date: Date) {
-  return formatDateTimeLocal(date).slice(0, 10)
+function pad(value: number) {
+  return String(value).padStart(2, '0')
 }
 
 function formatDateTimeLocal(date: Date) {
@@ -328,12 +326,19 @@ function formatDateTimeLocal(date: Date) {
   return localDate.toISOString().slice(0, 16)
 }
 
-function startOfLocalDate(value: string) {
-  return new Date(`${value}T00:00:00`)
+function startOfLocalDate(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate())
 }
 
-function endOfLocalDate(value: string) {
-  return new Date(`${value}T23:59:59.999`)
+function endOfLocalDate(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999)
+}
+
+function addDays(date: Date, days: number) {
+  const next = new Date(date)
+  next.setDate(next.getDate() + days)
+
+  return next
 }
 
 function addHours(date: Date, hours: number) {
@@ -351,32 +356,11 @@ function roundToNextHour(date: Date) {
 
 <template>
   <section class="events-panel">
-    <div class="events-panel__header">
-      <div>
-        <p class="events-panel__eyebrow">Eventi</p>
-        <h2>Agenda del periodo</h2>
-      </div>
-      <div class="range-controls">
-        <label>
-          Da
-          <input v-model="rangeFrom" type="date">
-        </label>
-        <label>
-          A
-          <input v-model="rangeTo" type="date">
-        </label>
-      </div>
-    </div>
-
-    <p v-if="actionMessage" class="feedback feedback--success" role="status">
-      {{ actionMessage }}
-    </p>
-    <p v-if="errorMessage" class="feedback feedback--error" role="alert">
-      {{ errorMessage }}
-    </p>
+    <p v-if="actionMessage" class="feedback feedback--success" role="status">{{ actionMessage }}</p>
+    <p v-if="errorMessage" class="feedback feedback--error" role="alert">{{ errorMessage }}</p>
 
     <section class="event-editor">
-      <h3>{{ isEditing ? 'Modifica evento' : 'Crea evento' }}</h3>
+      <h3>{{ isEditing ? 'Modifica evento' : 'Nuovo evento' }}</h3>
 
       <p v-if="!writableCalendars.length" class="empty-state">
         Serve almeno un calendario dove sei owner o editor per creare eventi.
@@ -386,9 +370,7 @@ function roundToNextHour(date: Date) {
         <label>
           Calendario
           <select v-model="eventForm.calendarId" required>
-            <option v-for="calendar in writableCalendars" :key="calendar.id" :value="calendar.id">
-              {{ calendar.name }}
-            </option>
+            <option v-for="calendar in writableCalendars" :key="calendar.id" :value="calendar.id">{{ calendar.name }}</option>
           </select>
         </label>
 
@@ -398,7 +380,7 @@ function roundToNextHour(date: Date) {
         </label>
 
         <label>
-          Categoria
+          Categoria (opzionale)
           <input v-model="eventForm.category" type="text" placeholder="lavoro, famiglia, sport...">
         </label>
 
@@ -413,81 +395,90 @@ function roundToNextHour(date: Date) {
         </label>
 
         <label>
-          Visibilita
+          Visibilita predefinita
           <select v-model="eventForm.visibilityDefault">
-            <option value="clear">In chiaro</option>
-            <option value="busy">Solo occupato</option>
-            <option value="hidden">Nascosto</option>
+            <option v-for="option in visibilityOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
           </select>
         </label>
 
-        <label class="checkbox-field">
-          <input v-model="eventForm.isRecurring" type="checkbox">
-          Ricorrente
+        <label>
+          Ripetizione
+          <select v-model="eventForm.recurrenceFrequency">
+            <option v-for="option in frequencyOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+          </select>
         </label>
 
-        <label v-if="eventForm.isRecurring">
-          RRULE
-          <input v-model="eventForm.recurrenceRule" type="text" placeholder="FREQ=WEEKLY;COUNT=4">
+        <div v-if="eventForm.recurrenceFrequency === 'custom'" class="custom-recurrence">
+          <label>
+            Ogni
+            <input v-model.number="eventForm.customInterval" type="number" min="1" step="1">
+          </label>
+          <label>
+            Unita
+            <select v-model="eventForm.customUnit">
+              <option v-for="unit in customUnitOptions" :key="unit.value" :value="unit.value">{{ unit.label }}</option>
+            </select>
+          </label>
+        </div>
+
+        <label v-if="eventForm.recurrenceFrequency !== 'none'">
+          Fino al (opzionale)
+          <input v-model="eventForm.recurrenceUntil" type="date">
         </label>
+
+        <label v-if="connections.length">
+          Associa a un contatto (opzionale)
+          <select v-model="eventForm.associatedUserId">
+            <option value="">Nessuno</option>
+            <option v-for="connection in connections" :key="connection.targetUserId" :value="connection.targetUserId">
+              {{ connection.targetName || connection.targetEmail }}
+            </option>
+          </select>
+        </label>
+
+        <div v-if="eventForm.associatedUserId" class="association-extra">
+          <label>
+            Colore
+            <input v-model="eventForm.associatedColor" type="color">
+          </label>
+          <label>
+            Icona
+            <select v-model="eventForm.associatedIcon">
+              <option v-for="icon in iconOptions" :key="icon" :value="icon">{{ icon || 'Nessuna' }}</option>
+            </select>
+          </label>
+        </div>
 
         <div class="inline-actions">
           <button class="button button--primary" type="submit" :disabled="isSubmitting">
-            {{ isEditing ? 'Salva evento' : 'Crea evento' }}
+            {{ isEditing ? 'Salva modifiche' : 'Crea evento' }}
           </button>
-          <button v-if="isEditing" class="button button--ghost" type="button" @click="resetEventForm">
-            Annulla
-          </button>
+          <button v-if="isEditing" class="button button--ghost" type="button" @click="resetEventForm">Annulla</button>
         </div>
       </form>
     </section>
 
     <section class="event-list">
-      <h3>Occorrenze</h3>
+      <h3>I tuoi eventi</h3>
 
       <p v-if="pending" class="empty-state">Caricamento eventi...</p>
-      <p v-else-if="!localData.occurrences.length" class="empty-state">
-        Nessun evento nel periodo selezionato.
-      </p>
+      <p v-else-if="!sourceEvents.length" class="empty-state">Non hai ancora creato eventi.</p>
 
       <article
-        v-for="occurrence in localData.occurrences"
-        :key="occurrence.id"
+        v-for="event in sourceEvents"
+        :key="event.id"
         class="event-row"
-        :style="{ '--event-color': occurrence.calendarColor }"
+        :style="{ '--event-color': event.calendarColor }"
       >
         <span class="event-row__stripe" aria-hidden="true" />
         <div class="event-row__main">
-          <strong>{{ occurrence.title }}</strong>
-          <span>{{ formatOccurrenceTime(occurrence) }}</span>
-          <span>{{ occurrence.calendarName }}<template v-if="occurrence.category"> - {{ occurrence.category }}</template></span>
-        </div>
-        <div class="event-row__badges">
-          <span v-if="occurrence.isRecurring">RRULE</span>
-          <span>{{ occurrence.visibilityDefault }}</span>
-        </div>
-      </article>
-    </section>
-
-    <section class="event-list">
-      <h3>Serie ed eventi sorgente</h3>
-
-      <article
-        v-for="event in localData.events"
-        :key="event.id"
-        class="source-event"
-      >
-        <div>
           <strong>{{ event.title }}</strong>
-          <span>{{ event.calendarName }} - {{ event.isRecurring ? 'ricorrente' : 'singolo' }}</span>
+          <span>{{ formatEventDate(event.startAt) }} · {{ event.calendarName }}</span>
+          <small>{{ recurrenceSummary(event) }}<template v-if="event.category"> · {{ event.category }}</template></small>
         </div>
         <div class="inline-actions">
-          <button class="button button--secondary" type="button" @click="editEvent(event)">
-            Modifica
-          </button>
-          <button class="button button--danger" type="button" :disabled="isSubmitting" @click="deleteEvent(event)">
-            Elimina
-          </button>
+          <button class="button button--secondary" type="button" @click="editEvent(event)">Modifica</button>
+          <button class="button button--danger" type="button" :disabled="isSubmitting" @click="deleteEvent(event)">Elimina</button>
         </div>
       </article>
     </section>
@@ -496,39 +487,27 @@ function roundToNextHour(date: Date) {
 
 <style scoped>
 .events-panel {
-  margin-top: 24px;
+  margin-top: 18px;
   padding: 18px;
   border: 1px solid rgba(229, 231, 235, 0.9);
-  border-radius: 26px;
-  background: rgba(255, 255, 255, 0.92);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.94);
   box-shadow: 0 14px 40px rgba(15, 23, 42, 0.06);
 }
 
-.events-panel__header {
-  display: grid;
-  gap: 14px;
-  margin-bottom: 16px;
+h3 {
+  margin: 0 0 12px;
 }
 
-.events-panel__eyebrow {
-  margin: 0 0 8px;
-  color: var(--color-accent);
-  font-size: 0.78rem;
-  font-weight: 900;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-h2,
-h3,
-p {
-  margin-top: 0;
-}
-
-.range-controls,
-.event-form {
+.event-form,
+.custom-recurrence,
+.association-extra {
   display: grid;
   gap: 12px;
+}
+
+input[type="color"] {
+  padding: 5px;
 }
 
 label {
@@ -545,28 +524,17 @@ select {
   width: 100%;
   padding: 0 13px;
   border: 1px solid #d1d5db;
-  border-radius: 16px;
+  border-radius: 10px;
   background: #ffffff;
   color: var(--color-ink);
   font: inherit;
-}
-
-.checkbox-field {
-  display: flex;
-  align-items: center;
-  min-height: 50px;
-}
-
-.checkbox-field input {
-  width: 18px;
-  min-height: 18px;
 }
 
 .button {
   min-height: 48px;
   padding: 0 16px;
   border: 0;
-  border-radius: 16px;
+  border-radius: 10px;
   cursor: pointer;
   font: inherit;
   font-weight: 900;
@@ -605,8 +573,9 @@ select {
 }
 
 .feedback {
+  margin-bottom: 14px;
   padding: 14px 16px;
-  border-radius: 18px;
+  border-radius: 12px;
   font-weight: 800;
 }
 
@@ -622,58 +591,47 @@ select {
 
 .empty-state,
 .event-row span,
-.source-event span {
+.event-row small {
   color: var(--color-muted);
-  line-height: 1.55;
+  line-height: 1.5;
 }
 
-.event-editor,
 .event-list {
   margin-top: 18px;
   padding-top: 18px;
   border-top: 1px solid var(--color-line);
 }
 
-.event-row,
-.source-event {
+.event-row {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   margin-top: 10px;
   padding: 12px;
-  border-radius: 18px;
+  border-radius: 12px;
   background: #f8fafc;
 }
 
 .event-row__stripe {
   flex: 0 0 auto;
   width: 6px;
-  min-height: 58px;
+  min-height: 52px;
   border-radius: 999px;
   background: var(--event-color);
 }
 
-.event-row__main,
-.source-event div:first-child {
+.event-row__main {
   display: grid;
   gap: 3px;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
-.event-row__badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  justify-content: flex-end;
-}
-
-.event-row__badges span {
-  padding: 5px 8px;
-  border-radius: 999px;
-  background: #e0ecff;
-  color: #174ea6;
-  font-size: 0.72rem;
-  font-weight: 900;
+.event-row__main strong,
+.event-row__main span,
+.event-row__main small {
+  display: block;
 }
 
 @media (min-width: 760px) {
@@ -681,18 +639,21 @@ select {
     padding: 24px;
   }
 
-  .events-panel__header {
-    grid-template-columns: 1fr auto;
-    align-items: end;
-  }
-
-  .range-controls {
-    grid-template-columns: repeat(2, 160px);
-  }
-
   .event-form {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: end;
+  }
+
+  .event-form > .inline-actions {
+    grid-column: 1 / -1;
+  }
+
+  .custom-recurrence {
+    grid-template-columns: 120px 1fr;
+  }
+
+  .association-extra {
+    grid-template-columns: 1fr 1fr;
   }
 }
 </style>

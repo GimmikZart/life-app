@@ -109,9 +109,6 @@ export const calendarEvents = pgTable(
     isRecurring: boolean('is_recurring').notNull().default(false),
     recurrenceRule: text('recurrence_rule'),
     visibilityDefault: eventVisibilityEnum('visibility_default').notNull().default('clear'),
-    // Integrazione manuale (non distruttiva): l'evento resta nel suo calendario
-    // ma, se true, compare anche nella vista ufficiale del proprietario.
-    pinnedToPrimary: boolean('pinned_to_primary').notNull().default(false),
     source: text('source').notNull().default('life_app'),
     externalId: text('external_id'),
     // Ciclo 3 colleghera questo campo a actions.id con una foreign key reale.
@@ -190,5 +187,25 @@ export const eventAssociations = pgTable(
       table.associatedUserId
     ),
     index('event_associations_associated_user_id_idx').on(table.associatedUserId)
+  ]
+)
+
+// Integrazione manuale PER-UTENTE: una riga = "questo utente vuole questo evento
+// nella propria vista ufficiale". Sostituisce il vecchio booleano owner-only
+// `calendar_events.pinned_to_primary`, cosi posso fissare anche eventi non miei
+// (es. da un calendario condiviso o pubblico) che ho il permesso di vedere.
+export const eventOfficialPins = pgTable(
+  'event_official_pins',
+  {
+    eventId: uuid('event_id')
+      .notNull()
+      .references(() => calendarEvents.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' })
+  },
+  (table) => [
+    unique('event_official_pins_event_id_user_id_unique').on(table.eventId, table.userId),
+    index('event_official_pins_user_id_idx').on(table.userId)
   ]
 )

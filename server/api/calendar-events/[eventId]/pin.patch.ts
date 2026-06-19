@@ -1,13 +1,13 @@
 import { and, eq } from 'drizzle-orm'
 
 import { useDatabase } from '../../../database/client'
-import { calendarEvents } from '../../../database/schema'
+import { calendarEvents, eventOfficialPins } from '../../../database/schema'
 import { requireAuthenticatedUser } from '../../../utils/auth'
+import { getCalendarMembership } from '../../../utils/calendar-access'
 
-// Toggle leggero dell'integrazione manuale di un singolo evento nella vista
-// ufficiale. Separato dal PATCH completo perche non richiede l'intero payload
-// (e non avrebbe senso su una singola occorrenza di una serie ricorrente).
-// pinned_to_primary e relativo al proprietario dell'evento: solo lui puo fissarlo.
+// Integrazione manuale PER-UTENTE: fissa/sgancia un evento dalla MIA vista ufficiale.
+// Posso fissare qualsiasi evento che ho il diritto di vedere (sono membro accettato
+// del suo calendario), anche se l'evento e di un altro (calendario condiviso/pubblico).
 export default defineEventHandler(async (event) => {
   const currentUser = await requireAuthenticatedUser(event)
   const eventId = getRouterParam(event, 'eventId')
@@ -23,21 +23,36 @@ export default defineEventHandler(async (event) => {
   }
 
   const db = useDatabase()
-  const [updated] = await db
-    .update(calendarEvents)
-    .set({ pinnedToPrimary: body.pinnedToPrimary })
-    .where(and(
-      eq(calendarEvents.id, eventId),
-      eq(calendarEvents.userId, currentUser.id)
-    ))
-    .returning()
+  const [existingEvent] = await db
+    .select({ calendarId: calendarEvents.calendarId })
+    .from(calendarEvents)
+    .where(eq(calendarEvents.id, eventId))
+    .limit(1)
 
-  if (!updated) {
-    throw createError({
-      statusCode: 404,
-      statusMessage: 'Event not found or not owned by you.'
-    })
+  if (!existingEvent) {
+    throw createError({ statusCode: 404, statusMessage: 'Event not found.' })
   }
 
-  return { event: updated }
+  // Devo poter vedere l'evento: membro accettato del calendario che lo contiene.
+  const membership = await getCalendarMembership(existingEvent.calendarId, currentUser.id)
+
+  if (!membership || membership.status !== 'accepted') {
+    throw createError({ statusCode: 403, statusMessage: 'You cannot access this event.' })
+  }
+
+  if (body.pinnedToPrimary) {
+    await db
+      .insert(eventOfficialPins)
+      .values({ eventId, userId: currentUser.id })
+      .onConflictDoNothing()
+  } else {
+    await db
+      .delete(eventOfficialPins)
+      .where(and(
+        eq(eventOfficialPins.eventId, eventId),
+        eq(eventOfficialPins.userId, currentUser.id)
+      ))
+  }
+
+  return { pinnedToPrimary: body.pinnedToPrimary }
 })

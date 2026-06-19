@@ -2,27 +2,27 @@ project_id = "life-app"
 
 [api]
 enabled = true
-port = 55321
+port = 53321
 schemas = ["public", "graphql_public"]
 extra_search_path = ["public", "extensions"]
 max_rows = 1000
 
 [db]
-port = 55322
-shadow_port = 55320
+port = 53322
+shadow_port = 53320
 major_version = 15
 
 [studio]
 enabled = true
-port = 55323
+port = 53323
 
 [inbucket]
 enabled = true
-port = 55324
+port = 53324
 
 [analytics]
 enabled = false
-port = 55327
+port = 53327
 
 [auth]
 enabled = true

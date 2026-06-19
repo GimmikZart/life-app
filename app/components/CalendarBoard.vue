@@ -21,6 +21,7 @@ type CalendarOccurrence = {
   isRecurring: boolean
   visibilityDefault: 'clear' | 'busy' | 'hidden'
   pinnedToPrimary: boolean
+  association: { userId: string; name: string | null; color: string | null; icon: string | null } | null
 }
 
 type CalendarEventsResponse = {
@@ -110,11 +111,10 @@ const visibleCalendarIds = computed<string[]>(() => {
     : []
 })
 
-// Il pin (integrazione manuale) e consentito solo sui propri calendari.
-// Nota: per i calendari condivisi che possiedi, eventi creati da co-editor
-// non sono fissabili (il pin e relativo al proprietario dell'evento).
+// Il pin (integrazione manuale) e PER-UTENTE: posso fissare nella mia vista
+// ufficiale qualsiasi evento che vedo (anche di calendari condivisi/pubblici).
 function canPinOccurrence(occurrence: CalendarOccurrence) {
-  return layers.value.some((layer) => layer.id === occurrence.calendarId && layer.myPermission === 'owner')
+  return layers.value.some((layer) => layer.id === occurrence.calendarId)
 }
 
 // Ricarica gli eventi quando cambiano i layer visibili (solo dopo il primo render).
@@ -180,16 +180,22 @@ const calendarTitle = computed(() => {
 })
 
 const calendarEvents = computed<EventInput[]>(() =>
-  occurrences.value.map((occurrence) => ({
-    id: occurrence.id,
-    title: occurrence.visibilityDefault === 'busy' ? 'Occupato' : occurrence.title,
-    start: occurrence.startAt,
-    end: occurrence.endAt,
-    backgroundColor: occurrence.calendarColor,
-    borderColor: occurrence.calendarColor,
-    textColor: '#ffffff',
-    extendedProps: { occurrence }
-  }))
+  occurrences.value.map((occurrence) => {
+    const color = occurrence.association?.color || occurrence.calendarColor
+    const baseTitle = occurrence.visibilityDefault === 'busy' ? 'Occupato' : occurrence.title
+    const icon = occurrence.visibilityDefault === 'busy' ? '' : occurrence.association?.icon
+
+    return {
+      id: occurrence.id,
+      title: icon ? `${icon} ${baseTitle}` : baseTitle,
+      start: occurrence.startAt,
+      end: occurrence.endAt,
+      backgroundColor: color,
+      borderColor: color,
+      textColor: '#ffffff',
+      extendedProps: { occurrence }
+    }
+  })
 )
 
 const calendarOptions = computed<CalendarOptions>(() => ({
@@ -423,6 +429,10 @@ function capitalizeDate(value: string) {
       <h3>{{ selectedOccurrence.title }}</h3>
       <p>{{ formatOccurrenceMeta(selectedOccurrence) }}</p>
       <p>{{ selectedOccurrence.calendarName }}<template v-if="selectedOccurrence.category"> - {{ selectedOccurrence.category }}</template></p>
+      <p v-if="selectedOccurrence.association?.name" class="occurrence-detail__with">
+        <span v-if="selectedOccurrence.association.icon" aria-hidden="true">{{ selectedOccurrence.association.icon }}</span>
+        con {{ selectedOccurrence.association.name }}
+      </p>
       <div class="occurrence-detail__tags">
         <span v-if="selectedOccurrence.isRecurring" class="occurrence-detail__badge">Ricorrente</span>
         <span v-if="selectedOccurrence.pinnedToPrimary" class="occurrence-detail__badge occurrence-detail__badge--pin">Nell'ufficiale</span>

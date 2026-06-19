@@ -29,7 +29,7 @@ La feature Calendario viene estesa con il concetto di **layer**: un calendario �
 **Step di implementazione (sostituiscono/estendono 2.5b):**
 1. **Layer & primario** — schema sopra, auto-creazione primario, filtro `calendarIds` + scope `official` su `/api/calendar-events`, select calendario in alto nel board (default primario), controlli primario/integrazione nel pannello gestione, pin evento. *(stato: FATTO)*
 2. **Connessioni reciproche + privacy** — handshake con `status` sulle relationships (pending/accepted/declined), riga reciproca creata all'accettazione, default di visibilità invertito a `busy` (privato), UI invita/accetta/rifiuta + richieste inviate/ricevute + connessioni attive. `resolveEventVisibility` applica solo relazioni accettate. *(stato: FATTO — test runtime richiede un secondo account)*
-3. **Motore Free/Busy + overlay N utenti** — endpoint `/api/availability`, algoritmo sweep-line per gli slot liberi comuni, vista "Confronta disponibilità" + "trova primo slot libero" (generalizza il 2.5b originale, non più limitato a 2 utenti), sezione "Disponibilità condivise" nella Today View. *(stato: DA FARE)*
+3. **Motore Free/Busy + overlay N utenti** — endpoint `GET /api/availability` (disponibilità ufficiale propria + delle persone connesse, risolta con le regole dei proprietari), vista `/calendar/availability` con selezione persone + range (settimana/mese/mese prossimo/personalizzato) + bottone "Trova slot liberi" (algoritmo sweep-line lato client con fascia oraria e durata minima) + lista impegni di tutti color-coded. *(stato: FATTO — test runtime richiede 2+ account connessi con eventi)*. Resta da agganciare la sezione "Disponibilità condivise" nella Today View (placeholder) e l'idea futura della "room via link condiviso" (deferita).
 
 ---
 
@@ -228,7 +228,9 @@ La feature Calendario viene estesa con il concetto di **layer**: un calendario �
 
 ---
 
-## Sotto-Ciclo 2.6 — Eventi associati a contatti specifici (colori/icone dedicate)
+## Sotto-Ciclo 2.6 — Eventi associati a contatti specifici (colori/icone dedicate) — FATTO (2026-06-19)
+
+> Implementato: endpoint `POST /api/event-associations` (upsert) + `DELETE /api/event-associations/[eventId]/[associatedUserId]`; il form crea/modifica evento permette di associare un contatto (dalle connessioni) con colore + icona; colore/icona mostrati nel board e nella Today View. `pinned_to_primary` (booleano owner-only) sostituito da `event_official_pins` (pin PER-UTENTE: posso integrare manualmente nella MIA vista ufficiale qualsiasi evento che vedo, anche di calendari condivisi/pubblici). Test runtime richiede 2+ account.
 
 **Obiettivo:** un evento può essere associato a un contatto specifico e visualizzato con colore/icona dedicati, come da esempio "Cena con Giulia" nel Project Knowledge v2.
 

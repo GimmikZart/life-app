@@ -1,5 +1,13 @@
 import { RRule } from 'rrule'
 
+// Associazione di un evento a un contatto specifico (colore/icona dedicati) — 2.6.
+export type AssociationInfo = {
+  userId: string
+  name: string | null
+  color: string | null
+  icon: string | null
+}
+
 export type CalendarEventForExpansion = {
   id: string
   title: string
@@ -13,6 +21,7 @@ export type CalendarEventForExpansion = {
   recurrenceRule: string | null
   visibilityDefault: 'clear' | 'busy' | 'hidden'
   pinnedToPrimary: boolean
+  association?: AssociationInfo | null
 }
 
 export type CalendarEventOccurrence = {
@@ -28,6 +37,7 @@ export type CalendarEventOccurrence = {
   isRecurring: boolean
   visibilityDefault: 'clear' | 'busy' | 'hidden'
   pinnedToPrimary: boolean
+  association: AssociationInfo | null
 }
 
 export function expandCalendarEvents(
@@ -94,6 +104,7 @@ function toOccurrence(
     endAt: endAt.toISOString(),
     isRecurring: event.isRecurring,
     visibilityDefault: event.visibilityDefault,
-    pinnedToPrimary: event.pinnedToPrimary
+    pinnedToPrimary: event.pinnedToPrimary,
+    association: event.association ?? null
   }
 }

@@ -5,8 +5,11 @@ import {
   calendarEvents,
   calendarMembers,
   calendars,
+  eventAssociations,
+  eventOfficialPins,
   eventVisibilityOverrides,
-  relationships
+  relationships,
+  users
 } from '../../database/schema'
 import { requireAuthenticatedUser } from '../../utils/auth'
 import { parseDateRange } from '../../utils/calendar-event-validation'
@@ -68,8 +71,7 @@ export default defineEventHandler(async (event) => {
       endAt: calendarEvents.endAt,
       isRecurring: calendarEvents.isRecurring,
       recurrenceRule: calendarEvents.recurrenceRule,
-      visibilityDefault: calendarEvents.visibilityDefault,
-      pinnedToPrimary: calendarEvents.pinnedToPrimary
+      visibilityDefault: calendarEvents.visibilityDefault
     })
     .from(calendarEvents)
     .innerJoin(calendars, eq(calendars.id, calendarEvents.calendarId))
@@ -81,15 +83,33 @@ export default defineEventHandler(async (event) => {
       )
     ))
 
-  const scopedEventRows = eventRows.filter((row) => {
+  // Pin per-utente: quali di questi eventi ho fissato nella MIA vista ufficiale.
+  const fetchedEventIds = eventRows.map((row) => row.id)
+  const pinRows = fetchedEventIds.length
+    ? await db
+        .select({ eventId: eventOfficialPins.eventId })
+        .from(eventOfficialPins)
+        .where(and(
+          eq(eventOfficialPins.userId, currentUser.id),
+          inArray(eventOfficialPins.eventId, fetchedEventIds)
+        ))
+    : []
+  const myPinnedEventIds = new Set(pinRows.map((row) => row.eventId))
+
+  // `pinnedToPrimary` qui significa "fissato da me" (relativo all'utente corrente).
+  const eventRowsWithPin = eventRows.map((row) => ({
+    ...row,
+    pinnedToPrimary: myPinnedEventIds.has(row.id)
+  }))
+
+  const scopedEventRows = eventRowsWithPin.filter((row) => {
     if (scope === 'mine') {
       return row.userId === currentUser.id
     }
 
     if (scope === 'official') {
-      // Vista ufficiale = eventi dei calendari integrati + eventi propri fissati.
-      return officialCalendarIds.has(row.calendarId)
-        || (row.userId === currentUser.id && row.pinnedToPrimary)
+      // Vista ufficiale = eventi dei calendari integrati + eventi fissati da me.
+      return officialCalendarIds.has(row.calendarId) || row.pinnedToPrimary
     }
 
     return true
@@ -124,11 +144,46 @@ export default defineEventHandler(async (event) => {
           eq(eventVisibilityOverrides.targetUserId, currentUser.id)
         ))
     : []
-  const visibleEventRows = scopedEventRows
-    .map((row) =>
-      resolveEventVisibility(row, currentUser.id, relationshipRows, overrideRows) as CalendarEventForExpansion | null
-    )
-    .filter((row): row is CalendarEventForExpansion => row !== null)
+  // Associazioni evento-contatto (colore/icona) per gli eventi visibili.
+  const associationRows = eventIds.length
+    ? await db
+        .select({
+          eventId: eventAssociations.eventId,
+          associatedUserId: eventAssociations.associatedUserId,
+          displayConfig: eventAssociations.displayConfig,
+          name: users.name
+        })
+        .from(eventAssociations)
+        .innerJoin(users, eq(users.id, eventAssociations.associatedUserId))
+        .where(inArray(eventAssociations.eventId, eventIds))
+    : []
+  const associationByEvent = new Map(associationRows.map((row) => [row.eventId, row]))
+
+  const visibleEventRows: CalendarEventForExpansion[] = []
+  for (const row of scopedEventRows) {
+    const visible = resolveEventVisibility(row, currentUser.id, relationshipRows, overrideRows) as CalendarEventForExpansion | null
+
+    if (!visible) {
+      continue
+    }
+
+    // L'associazione si mostra solo sugli eventi in chiaro (non rivela "con chi" se occupato).
+    const association = visible.visibilityDefault === 'clear'
+      ? associationByEvent.get(visible.id)
+      : undefined
+
+    visibleEventRows.push({
+      ...visible,
+      association: association
+        ? {
+            userId: association.associatedUserId,
+            name: association.name,
+            color: typeof association.displayConfig?.color === 'string' ? association.displayConfig.color : null,
+            icon: typeof association.displayConfig?.icon === 'string' ? association.displayConfig.icon : null
+          }
+        : null
+    })
+  }
 
   return {
     events: visibleEventRows.map((row) => ({

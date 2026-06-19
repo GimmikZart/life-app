@@ -2,6 +2,9 @@
 const route = useRoute()
 const navigationItems = useCoreNavigation()
 const { user } = useUser()
+const { showLogout, items: menuItems } = useHeaderMenu()
+
+const isMenuOpen = ref(false)
 
 const displayName = computed(() => {
   const metadataName = user.value?.user_metadata?.name
@@ -11,6 +14,11 @@ const displayName = computed(() => {
   }
 
   return user.value?.email ?? 'Account'
+})
+
+// Chiude il menu quando si cambia vista.
+watch(() => route.path, () => {
+  isMenuOpen.value = false
 })
 </script>
 
@@ -35,7 +43,35 @@ const displayName = computed(() => {
 
     <div class="app-header__user">
       <span class="app-header__user-name">{{ displayName }}</span>
-      <NuxtLink class="app-header__logout" to="/logout">Logout</NuxtLink>
+
+      <NuxtLink v-if="showLogout" class="app-header__logout" to="/logout">Logout</NuxtLink>
+
+      <div v-else-if="menuItems.length" class="app-header__menu">
+        <button
+          class="app-header__menu-button"
+          type="button"
+          :aria-expanded="isMenuOpen"
+          aria-label="Menu azioni"
+          @click="isMenuOpen = !isMenuOpen"
+        >
+          <span aria-hidden="true">☰</span>
+        </button>
+
+        <template v-if="isMenuOpen">
+          <button class="app-header__menu-overlay" type="button" aria-label="Chiudi menu" @click="isMenuOpen = false" />
+          <div class="app-header__menu-dropdown" role="menu">
+            <NuxtLink
+              v-for="item in menuItems"
+              :key="item.to"
+              class="app-header__menu-item"
+              role="menuitem"
+              :to="item.to"
+            >
+              {{ item.label }}
+            </NuxtLink>
+          </div>
+        </template>
+      </div>
     </div>
   </header>
 </template>
@@ -134,6 +170,60 @@ const displayName = computed(() => {
   background: #ffffff;
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
   font-weight: 800;
+}
+
+.app-header__menu {
+  position: relative;
+}
+
+.app-header__menu-button {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+  color: var(--color-ink);
+  cursor: pointer;
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.app-header__menu-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  border: 0;
+  background: transparent;
+  cursor: default;
+}
+
+.app-header__menu-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 41;
+  display: grid;
+  min-width: 210px;
+  padding: 8px;
+  border: 1px solid var(--color-line);
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.18);
+}
+
+.app-header__menu-item {
+  padding: 12px 12px;
+  border-radius: 10px;
+  color: var(--color-ink);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.app-header__menu-item:hover {
+  background: #f1f5f9;
 }
 
 @media (max-width: 420px) {
