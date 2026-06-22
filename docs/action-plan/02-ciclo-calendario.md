@@ -124,7 +124,7 @@ La feature Calendario viene estesa con il concetto di **layer**: un calendario �
 - Visualizzazione calendario completa (mensile/settimanale/giornaliera) — arriva nel Sotto-Ciclo 2.4
 - Visibilità/condivisione granulare (arriva nel Sotto-Ciclo 2.5a)
 - Collegamento con Action (arriva nel Ciclo 3)
-- Eccezioni di ricorrenza (modifica/eliminazione di una singola occorrenza di una serie ricorrente, es. "salta solo il 25 dicembre" o "sposta solo questa occorrenza") — **nodo aperto esplicito di questo sotto-ciclo**: il Project Knowledge v2 non specifica come gestire le eccezioni. Per la V1, la scelta più semplice è non supportarle: modificare/eliminare un evento ricorrente agisce sull'intera serie. Se in fase di sviluppo emerge la necessità di eccezioni (probabile, è un caso d'uso comune), va trattata come Sotto-Ciclo aggiuntivo da inserire qui (es. 2.3b), non risolta improvvisando dentro altri sotto-cicli
+- Eccezioni di ricorrenza — **RISOLTO (2026-06-22)**: implementato il supporto completo (scope `all`/`single`/`following`) via tabella `event_exceptions` + scope su PATCH/DELETE + UI "Applica a: Solo questo / Questo e successivi / Tutta la serie". Vedi memoria `calendar-feature-design`. (Nodo aperto originale chiuso.)
 
 **Output atteso:**
 - Endpoint CRUD per `calendar_events`

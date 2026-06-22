@@ -35,7 +35,8 @@ export default defineEventHandler(async (event) => {
       ownerId: calendars.userId,
       name: calendars.name,
       color: calendars.color,
-      type: calendars.type
+      type: calendars.type,
+      shareToken: calendars.shareToken
     })
     .from(calendars)
     .where(inArray(calendars.id, calendarIds))
@@ -59,6 +60,8 @@ export default defineEventHandler(async (event) => {
 
   const calendarsWithMembers = calendarRows.map((calendar) => ({
     ...calendar,
+    // Il token di condivisione è visibile solo all'owner (è una "chiave" del calendario).
+    shareToken: calendar.ownerId === currentUser.id ? calendar.shareToken : null,
     myPermission: membershipByCalendar.get(calendar.id)?.permission ?? 'viewer',
     myStatus: membershipByCalendar.get(calendar.id)?.status ?? 'pending',
     myIsPrimary: membershipByCalendar.get(calendar.id)?.isPrimary ?? false,

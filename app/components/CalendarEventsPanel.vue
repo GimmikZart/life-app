@@ -11,11 +11,9 @@ type CalendarOption = {
   myPermission: CalendarPermission
 }
 
-type CalendarEvent = {
+type LoadedEvent = {
   id: string
   calendarId: string
-  calendarName: string
-  calendarColor: string
   title: string
   category: string | null
   startAt: string
@@ -24,11 +22,6 @@ type CalendarEvent = {
   recurrenceRule: string | null
   visibilityDefault: EventVisibility
   association: { userId: string; name: string | null; color: string | null; icon: string | null } | null
-}
-
-type CalendarEventsResponse = {
-  events: CalendarEvent[]
-  occurrences: unknown[]
 }
 
 type Connection = { targetUserId: string; targetEmail: string; targetName: string | null }
@@ -66,20 +59,6 @@ const freqKeyword: Record<RecurrenceUnit, string> = {
   yearly: 'YEARLY'
 }
 
-// Mostriamo gli eventi creati in una finestra ampia (per modificarli/eliminarli),
-// senza esporre un filtro di periodo all'utente.
-const listFrom = addDays(new Date(), -7)
-const listTo = addDays(new Date(), 365)
-
-const { data: apiData, pending, refresh } = await useFetch<CalendarEventsResponse>('/api/calendar-events', {
-  query: {
-    from: startOfLocalDate(listFrom).toISOString(),
-    to: endOfLocalDate(listTo).toISOString(),
-    scope: 'mine'
-  },
-  default: () => ({ events: [], occurrences: [] })
-})
-
 const { data: relationshipData } = await useFetch<RelationshipsResponse>('/api/relationships', {
   default: () => ({ connections: [], incomingRequests: [], outgoingRequests: [] })
 })
@@ -88,7 +67,6 @@ const connections = computed(() => relationshipData.value?.connections ?? [])
 const writableCalendars = computed(() =>
   props.calendars.filter((calendar) => calendar.myPermission === 'owner' || calendar.myPermission === 'editor')
 )
-const sourceEvents = computed(() => apiData.value?.events ?? [])
 
 const eventForm = reactive({
   id: '',
@@ -109,6 +87,52 @@ const eventForm = reactive({
 // Contatto associato presente al caricamento (per sapere se va rimosso al salvataggio).
 const loadedAssociatedUserId = ref('')
 
+const route = useRoute()
+const editId = typeof route.query.eventId === 'string' ? route.query.eventId : ''
+// L'evento caricato è una serie ricorrente? + chiave dell'occorrenza in modifica.
+const isRecurringSeries = ref(false)
+const occurrenceKey = ref(typeof route.query.occurrence === 'string' ? route.query.occurrence : '')
+// Scope di modifica/eliminazione per le serie ricorrenti.
+const editScope = ref<'all' | 'single' | 'following'>(occurrenceKey.value ? 'single' : 'all')
+
+// Default del calendario: quello "a fuoco" nella vista /calendar (?calendarId).
+const calendarIdQuery = route.query.calendarId
+if (typeof calendarIdQuery === 'string' && calendarIdQuery) {
+  eventForm.calendarId = calendarIdQuery
+}
+
+if (editId) {
+  // Modalità modifica: carica l'evento esistente.
+  const { data: loaded } = await useFetch<{ event: LoadedEvent }>(`/api/calendar-events/${editId}`)
+  const loadedEvent = loaded.value?.event
+  if (loadedEvent) {
+    applyLoadedEvent(loadedEvent)
+    isRecurringSeries.value = loadedEvent.isRecurring
+
+    // Per una singola occorrenza precompilo data/ora di QUELLA occorrenza.
+    const startStr = typeof route.query.start === 'string' ? route.query.start : occurrenceKey.value
+    const start = startStr ? new Date(startStr) : null
+    if (occurrenceKey.value && start && !Number.isNaN(start.getTime())) {
+      const durationMs = new Date(loadedEvent.endAt).getTime() - new Date(loadedEvent.startAt).getTime()
+      eventForm.startAt = formatDateTimeLocal(start)
+      eventForm.endAt = formatDateTimeLocal(new Date(start.getTime() + durationMs))
+    }
+  }
+} else {
+  // Creazione: precompilazione data/ora dal click sul calendario (?start=ISO).
+  const startQuery = route.query.start
+  if (typeof startQuery === 'string') {
+    const startDate = new Date(startQuery)
+    if (!Number.isNaN(startDate.getTime())) {
+      eventForm.startAt = formatDateTimeLocal(startDate)
+      eventForm.endAt = formatDateTimeLocal(addHours(startDate, 1))
+    }
+  }
+}
+
+// Mostra la scelta dello scope solo quando si modifica un'occorrenza di una serie.
+const showScopeChoice = computed(() => Boolean(eventForm.id) && isRecurringSeries.value && Boolean(occurrenceKey.value))
+
 const actionMessage = ref('')
 const errorMessage = ref('')
 const isSubmitting = ref(false)
@@ -119,6 +143,14 @@ watch(writableCalendars, (calendars) => {
     eventForm.calendarId = calendars[0].id
   }
 }, { immediate: true })
+
+function cancelEdit() {
+  if (isEditing.value) {
+    navigateTo('/calendar')
+  } else {
+    resetEventForm()
+  }
+}
 
 function resetEventForm() {
   eventForm.id = ''
@@ -138,7 +170,7 @@ function resetEventForm() {
   loadedAssociatedUserId.value = ''
 }
 
-function editEvent(event: CalendarEvent) {
+function applyLoadedEvent(event: LoadedEvent) {
   eventForm.id = event.id
   eventForm.calendarId = event.calendarId
   eventForm.title = event.title
@@ -151,10 +183,6 @@ function editEvent(event: CalendarEvent) {
   eventForm.associatedIcon = event.association?.icon ?? ''
   loadedAssociatedUserId.value = event.association?.userId ?? ''
   applyRecurrenceFromRule(event.isRecurring ? event.recurrenceRule : null)
-
-  if (import.meta.client) {
-    window.scrollTo({ top: 0, behavior: 'smooth' })
-  }
 }
 
 async function saveEvent() {
@@ -175,11 +203,24 @@ async function saveEvent() {
   const associatedIcon = eventForm.associatedIcon
   const previousAssociated = loadedAssociatedUserId.value
 
-  await runEventAction(async () => {
+  const scope = showScopeChoice.value ? editScope.value : 'all'
+
+  const ok = await runEventAction(async () => {
     let eventId = eventForm.id
 
     if (wasEditing) {
-      await $fetch(`/api/calendar-events/${eventId}`, { method: 'PATCH', body })
+      const params = new URLSearchParams()
+      if (scope !== 'all') {
+        params.set('scope', scope)
+        params.set('occurrence', occurrenceKey.value)
+      }
+      const qs = params.toString()
+      const updated = await $fetch<{ event: { id: string } }>(
+        `/api/calendar-events/${eventId}${qs ? `?${qs}` : ''}` as string,
+        { method: 'PATCH', body }
+      )
+      // Per 'following' l'id è quello della nuova serie (per l'associazione).
+      eventId = updated.event.id
     } else {
       const created = await $fetch<{ event: { id: string } }>('/api/calendar-events', { method: 'POST', body })
       eventId = created.event.id
@@ -199,32 +240,50 @@ async function saveEvent() {
       await $fetch(`/api/event-associations/${eventId}/${previousAssociated}` as string, { method: 'DELETE' })
     }
 
-    resetEventForm()
   }, wasEditing ? 'Evento aggiornato.' : 'Evento creato.')
+
+  if (ok) {
+    await navigateTo('/calendar')
+  }
 }
 
-async function deleteEvent(event: CalendarEvent) {
-  await runEventAction(async () => {
-    await $fetch(`/api/calendar-events/${event.id}`, { method: 'DELETE' })
+async function deleteCurrentEvent() {
+  if (!eventForm.id) {
+    return
+  }
 
-    if (eventForm.id === event.id) {
-      resetEventForm()
+  const id = eventForm.id
+  const scope = showScopeChoice.value ? editScope.value : 'all'
+  const ok = await runEventAction(async () => {
+    const params = new URLSearchParams()
+    if (scope !== 'all') {
+      params.set('scope', scope)
+      params.set('occurrence', occurrenceKey.value)
     }
+    const qs = params.toString()
+    await $fetch(`/api/calendar-events/${id}${qs ? `?${qs}` : ''}` as string, { method: 'DELETE' })
   }, 'Evento eliminato.')
+
+  if (ok) {
+    await navigateTo('/calendar')
+  }
 }
 
-async function runEventAction(action: () => Promise<void>, successMessage: string) {
+async function runEventAction(action: () => Promise<void>, successMessage: string): Promise<boolean> {
   actionMessage.value = ''
   errorMessage.value = ''
   isSubmitting.value = true
 
   try {
     await action()
-    await refresh()
     actionMessage.value = successMessage
+
+    return true
   } catch (error) {
     const fetchError = error as Error & { data?: { statusMessage?: string } }
     errorMessage.value = fetchError?.data?.statusMessage ?? (error instanceof Error ? error.message : 'Operazione non riuscita.')
+
+    return false
   } finally {
     isSubmitting.value = false
   }
@@ -288,34 +347,6 @@ function formatRruleUntil(date: Date) {
   return `${date.getUTCFullYear()}${pad(date.getUTCMonth() + 1)}${pad(date.getUTCDate())}T${pad(date.getUTCHours())}${pad(date.getUTCMinutes())}${pad(date.getUTCSeconds())}Z`
 }
 
-function recurrenceSummary(event: CalendarEvent) {
-  if (!event.isRecurring) {
-    return 'singolo'
-  }
-
-  const rule = event.recurrenceRule ?? ''
-  const freq = rule.match(/FREQ=(DAILY|WEEKLY|MONTHLY|YEARLY)/i)?.[1]?.toUpperCase()
-  const interval = Number(rule.match(/INTERVAL=(\d+)/i)?.[1] ?? '1')
-  const unitKey = (Object.keys(freqKeyword) as RecurrenceUnit[]).find((key) => freqKeyword[key] === freq) ?? 'weekly'
-  const labels: Record<RecurrenceUnit, [string, string]> = {
-    daily: ['ogni giorno', 'giorni'],
-    weekly: ['ogni settimana', 'settimane'],
-    monthly: ['ogni mese', 'mesi'],
-    yearly: ['ogni anno', 'anni']
-  }
-
-  return interval > 1 ? `ogni ${interval} ${labels[unitKey][1]}` : labels[unitKey][0]
-}
-
-function formatEventDate(value: string) {
-  return new Date(value).toLocaleString('it-IT', {
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
-}
-
 function pad(value: number) {
   return String(value).padStart(2, '0')
 }
@@ -324,21 +355,6 @@ function formatDateTimeLocal(date: Date) {
   const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
 
   return localDate.toISOString().slice(0, 16)
-}
-
-function startOfLocalDate(date: Date) {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate())
-}
-
-function endOfLocalDate(date: Date) {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999)
-}
-
-function addDays(date: Date, days: number) {
-  const next = new Date(date)
-  next.setDate(next.getDate() + days)
-
-  return next
 }
 
 function addHours(date: Date, hours: number) {
@@ -449,38 +465,21 @@ function roundToNextHour(date: Date) {
           </label>
         </div>
 
+        <fieldset v-if="showScopeChoice" class="scope-choice">
+          <legend>Applica la modifica a</legend>
+          <label><input v-model="editScope" type="radio" value="single"> Solo questo evento</label>
+          <label><input v-model="editScope" type="radio" value="following"> Questo e i successivi</label>
+          <label><input v-model="editScope" type="radio" value="all"> Tutta la serie</label>
+        </fieldset>
+
         <div class="inline-actions">
           <button class="button button--primary" type="submit" :disabled="isSubmitting">
             {{ isEditing ? 'Salva modifiche' : 'Crea evento' }}
           </button>
-          <button v-if="isEditing" class="button button--ghost" type="button" @click="resetEventForm">Annulla</button>
+          <button v-if="isEditing" class="button button--danger" type="button" :disabled="isSubmitting" @click="deleteCurrentEvent">Elimina</button>
+          <button class="button button--ghost" type="button" @click="cancelEdit">Annulla</button>
         </div>
       </form>
-    </section>
-
-    <section class="event-list">
-      <h3>I tuoi eventi</h3>
-
-      <p v-if="pending" class="empty-state">Caricamento eventi...</p>
-      <p v-else-if="!sourceEvents.length" class="empty-state">Non hai ancora creato eventi.</p>
-
-      <article
-        v-for="event in sourceEvents"
-        :key="event.id"
-        class="event-row"
-        :style="{ '--event-color': event.calendarColor }"
-      >
-        <span class="event-row__stripe" aria-hidden="true" />
-        <div class="event-row__main">
-          <strong>{{ event.title }}</strong>
-          <span>{{ formatEventDate(event.startAt) }} · {{ event.calendarName }}</span>
-          <small>{{ recurrenceSummary(event) }}<template v-if="event.category"> · {{ event.category }}</template></small>
-        </div>
-        <div class="inline-actions">
-          <button class="button button--secondary" type="button" @click="editEvent(event)">Modifica</button>
-          <button class="button button--danger" type="button" :disabled="isSubmitting" @click="deleteEvent(event)">Elimina</button>
-        </div>
-      </article>
     </section>
   </section>
 </template>
@@ -570,6 +569,36 @@ select {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.scope-choice {
+  display: grid;
+  gap: 8px;
+  margin: 4px 0 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+}
+
+.scope-choice legend {
+  padding: 0 6px;
+  color: var(--color-muted);
+  font-size: 0.8rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.scope-choice label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  font-weight: 800;
+}
+
+.scope-choice input {
+  width: 18px;
+  height: 18px;
 }
 
 .feedback {

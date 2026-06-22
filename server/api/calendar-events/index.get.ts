@@ -14,6 +14,7 @@ import {
 import { requireAuthenticatedUser } from '../../utils/auth'
 import { parseDateRange } from '../../utils/calendar-event-validation'
 import { expandCalendarEvents, type CalendarEventForExpansion } from '../../utils/calendar-recurrence'
+import { getExceptionsByEvent } from '../../utils/event-exceptions'
 import { resolveEventVisibility } from '../../utils/event-visibility'
 
 export default defineEventHandler(async (event) => {
@@ -185,12 +186,14 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  const exceptionsByEvent = await getExceptionsByEvent(visibleEventRows.map((row) => row.id))
+
   return {
     events: visibleEventRows.map((row) => ({
       ...row,
       startAt: row.startAt.toISOString(),
       endAt: row.endAt.toISOString()
     })),
-    occurrences: expandCalendarEvents(visibleEventRows, from, to)
+    occurrences: expandCalendarEvents(visibleEventRows, from, to, exceptionsByEvent)
   }
 })

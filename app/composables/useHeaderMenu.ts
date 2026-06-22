@@ -11,21 +11,11 @@ export function useHeaderMenu() {
   const showLogout = computed(() => route.path === '/')
 
   const items = computed<HeaderMenuItem[]>(() => {
-    const path = route.path
-
-    if (path.startsWith('/calendar/relations')) {
-      return [
-        { label: 'Aggiungi relazione', to: '/calendar/relations/invite' },
-        { label: 'Vai al calendario', to: '/calendar' }
-      ]
-    }
-
-    if (path.startsWith('/calendar')) {
+    if (route.path.startsWith('/calendar')) {
+      // Menu unico e pulito per tutte le viste calendario.
+      // "Confronta disponibilità" contiene le room; "I miei calendari" la creazione.
       return [
         { label: 'Confronta disponibilità', to: '/calendar/availability' },
-        { label: 'Le mie room', to: '/calendar/rooms' },
-        { label: 'Crea evento', to: '/calendar/create-event' },
-        { label: 'Crea calendario', to: '/calendar/create' },
         { label: 'I miei calendari', to: '/calendar/manage' },
         { label: 'Relazioni', to: '/calendar/relations' }
       ]

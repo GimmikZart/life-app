@@ -88,9 +88,8 @@ function initialFor(name: string | null, email: string) {
     <header class="relations__header">
       <p class="relations__eyebrow">Calendario</p>
       <h1>Relazioni</h1>
-      <p class="relations__hint">
-        Le persone con cui sei connesso. Usa il menu in alto a destra per aggiungere una relazione.
-      </p>
+      <p class="relations__hint">Le persone con cui sei connesso.</p>
+      <NuxtLink class="add-link" to="/calendar/relations/invite">+ Aggiungi relazione</NuxtLink>
     </header>
 
     <p v-if="actionMessage" class="feedback feedback--success" role="status">{{ actionMessage }}</p>
@@ -182,6 +181,19 @@ h2 {
 .relation-card__body span {
   color: var(--color-muted);
   line-height: 1.5;
+}
+
+.add-link {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 12px;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 10px;
+  background: var(--color-ink);
+  color: #ffffff;
+  font-weight: 900;
+  text-decoration: none;
 }
 
 .relations__section {

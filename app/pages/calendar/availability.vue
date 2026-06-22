@@ -238,7 +238,9 @@ function addDays(date: Date, days: number) {
       <h1>Confronta disponibilità</h1>
       <p class="availability__hint">
         Scegli con chi confrontarti e il periodo, poi trova al volo gli slot liberi per tutti.
+        Per gruppi temporanei usa le room.
       </p>
+      <NuxtLink class="rooms-link" to="/calendar/rooms">Le mie room →</NuxtLink>
     </header>
 
     <section class="control-card">
@@ -355,6 +357,14 @@ h3 {
 .busy-row__who {
   color: var(--color-muted);
   line-height: 1.5;
+}
+
+.rooms-link {
+  display: inline-flex;
+  margin-top: 10px;
+  font-weight: 900;
+  color: var(--color-accent);
+  text-decoration: none;
 }
 
 .control-card {

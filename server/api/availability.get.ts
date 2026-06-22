@@ -12,6 +12,7 @@ import {
 import { requireAuthenticatedUser } from '../utils/auth'
 import { parseDateRange } from '../utils/calendar-event-validation'
 import { expandCalendarEvents, type CalendarEventForExpansion } from '../utils/calendar-recurrence'
+import { getExceptionsByEvent } from '../utils/event-exceptions'
 import { resolveEventVisibility } from '../utils/event-visibility'
 
 // Restituisce la disponibilità "ufficiale" (primario + calendari integrati) di me
@@ -130,6 +131,8 @@ export default defineEventHandler(async (event) => {
         ))
     : []
 
+  const exceptionsByEvent = await getExceptionsByEvent(officialEvents.map((row) => row.id))
+
   // Risolve la visibilità e espande le ricorrenze, attribuendo ogni occorrenza al proprietario.
   const occurrences = officialEvents.flatMap((row) => {
     const visible = resolveEventVisibility(row, currentUser.id, relationshipRows, overrideRows) as
@@ -141,7 +144,7 @@ export default defineEventHandler(async (event) => {
 
     const busy = visible.visibilityDefault === 'busy'
 
-    return expandCalendarEvents([visible], from, to).map((occurrence) => ({
+    return expandCalendarEvents([visible], from, to, exceptionsByEvent).map((occurrence) => ({
       id: `${row.userId}:${occurrence.id}`,
       ownerUserId: row.userId,
       title: occurrence.title,

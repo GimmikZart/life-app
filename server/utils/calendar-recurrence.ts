@@ -8,6 +8,18 @@ export type AssociationInfo = {
   icon: string | null
 }
 
+// Eccezione di una singola occorrenza (vedi tabella event_exceptions). Le date
+// sono ISO per confronto diretto con la chiave generata dalla RRULE.
+export type EventException = {
+  occurrenceDate: string
+  isCancelled: boolean
+  title: string | null
+  category: string | null
+  startAt: string | null
+  endAt: string | null
+  visibilityDefault: 'clear' | 'busy' | 'hidden' | null
+}
+
 export type CalendarEventForExpansion = {
   id: string
   title: string
@@ -27,6 +39,9 @@ export type CalendarEventForExpansion = {
 export type CalendarEventOccurrence = {
   id: string
   eventId: string
+  // Chiave dell'occorrenza (data di inizio originale generata dalla RRULE),
+  // usata per identificarla nelle eccezioni. Per gli eventi singoli = startAt.
+  occurrenceDate: string
   calendarId: string
   calendarName: string
   calendarColor: string
@@ -43,21 +58,23 @@ export type CalendarEventOccurrence = {
 export function expandCalendarEvents(
   events: CalendarEventForExpansion[],
   rangeStart: Date,
-  rangeEnd: Date
+  rangeEnd: Date,
+  exceptionsByEvent?: Map<string, EventException[]>
 ) {
   return events
-    .flatMap((event) => expandCalendarEvent(event, rangeStart, rangeEnd))
+    .flatMap((event) => expandCalendarEvent(event, rangeStart, rangeEnd, exceptionsByEvent?.get(event.id) ?? []))
     .sort((left, right) => left.startAt.localeCompare(right.startAt))
 }
 
 function expandCalendarEvent(
   event: CalendarEventForExpansion,
   rangeStart: Date,
-  rangeEnd: Date
+  rangeEnd: Date,
+  exceptions: EventException[]
 ): CalendarEventOccurrence[] {
   if (!event.isRecurring || !event.recurrenceRule) {
     return eventOverlapsRange(event.startAt, event.endAt, rangeStart, rangeEnd)
-      ? [toOccurrence(event, event.id, event.startAt, event.endAt)]
+      ? [toOccurrence(event, event.id, event.startAt, event.startAt, event.endAt)]
       : []
   }
 
@@ -70,15 +87,25 @@ function expandCalendarEvent(
 
   return recurringRule
     .between(rangeStart, rangeEnd, true)
-    .map((occurrenceStart) => {
-      const occurrenceEnd = new Date(occurrenceStart.getTime() + durationMs)
+    .flatMap((occurrenceStart) => {
+      const key = occurrenceStart.toISOString()
+      const exception = exceptions.find((item) => item.occurrenceDate === key)
 
-      return toOccurrence(
-        event,
-        `${event.id}:${occurrenceStart.toISOString()}`,
-        occurrenceStart,
-        occurrenceEnd
-      )
+      // Occorrenza eliminata singolarmente.
+      if (exception?.isCancelled) {
+        return []
+      }
+
+      const startAt = exception?.startAt ? new Date(exception.startAt) : occurrenceStart
+      const endAt = exception?.endAt
+        ? new Date(exception.endAt)
+        : new Date(occurrenceStart.getTime() + durationMs)
+
+      return [toOccurrence(event, `${event.id}:${key}`, occurrenceStart, startAt, endAt, {
+        title: exception?.title ?? event.title,
+        category: exception?.category ?? event.category,
+        visibilityDefault: exception?.visibilityDefault ?? event.visibilityDefault
+      })]
     })
 }
 
@@ -89,21 +116,24 @@ function eventOverlapsRange(startAt: Date, endAt: Date, rangeStart: Date, rangeE
 function toOccurrence(
   event: CalendarEventForExpansion,
   occurrenceId: string,
+  occurrenceDate: Date,
   startAt: Date,
-  endAt: Date
+  endAt: Date,
+  overrides?: { title: string; category: string | null; visibilityDefault: 'clear' | 'busy' | 'hidden' }
 ): CalendarEventOccurrence {
   return {
     id: occurrenceId,
     eventId: event.id,
+    occurrenceDate: occurrenceDate.toISOString(),
     calendarId: event.calendarId,
     calendarName: event.calendarName,
     calendarColor: event.calendarColor,
-    title: event.title,
-    category: event.category,
+    title: overrides?.title ?? event.title,
+    category: overrides ? overrides.category : event.category,
     startAt: startAt.toISOString(),
     endAt: endAt.toISOString(),
     isRecurring: event.isRecurring,
-    visibilityDefault: event.visibilityDefault,
+    visibilityDefault: overrides?.visibilityDefault ?? event.visibilityDefault,
     pinnedToPrimary: event.pinnedToPrimary,
     association: event.association ?? null
   }

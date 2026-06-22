@@ -43,6 +43,20 @@
       "when": 1781874685765,
       "tag": "20260619131125_polite_maelstrom",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1782127682380,
+      "tag": "20260622112802_watery_exodus",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1782131951289,
+      "tag": "20260622123911_aberrant_piledriver",
+      "breakpoints": true
     }
   ]
 }

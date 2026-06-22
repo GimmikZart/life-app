@@ -5,6 +5,7 @@ import { calendarEvents, calendarMembers, calendars, roomParticipants, users } f
 import { requireAuthenticatedUser } from '../../../utils/auth'
 import { parseDateRange } from '../../../utils/calendar-event-validation'
 import { expandCalendarEvents, type CalendarEventForExpansion } from '../../../utils/calendar-recurrence'
+import { getExceptionsByEvent } from '../../../utils/event-exceptions'
 import { getRoomByToken, getRoomParticipant, isRoomExpired } from '../../../utils/rooms'
 
 // Disponibilità di tutti i partecipanti alla room. La visibilità (titolo vs
@@ -107,6 +108,8 @@ export default defineEventHandler(async (event) => {
 
   const officialEvents = eventRows.filter((row) => officialByUser.get(row.userId)?.has(row.calendarId))
 
+  const exceptionsByEvent = await getExceptionsByEvent(officialEvents.map((row) => row.id))
+
   const occurrences = officialEvents.flatMap((row) => {
     const clear = (visibilityByUser.get(row.userId) ?? 'busy') === 'clear'
     const enriched: CalendarEventForExpansion = {
@@ -118,7 +121,7 @@ export default defineEventHandler(async (event) => {
       association: null
     }
 
-    return expandCalendarEvents([enriched], from, to).map((occurrence) => ({
+    return expandCalendarEvents([enriched], from, to, exceptionsByEvent).map((occurrence) => ({
       id: `${row.userId}:${occurrence.id}`,
       ownerUserId: row.userId,
       title: occurrence.title,

@@ -64,6 +64,7 @@ async function answerInvite(calendar: CalendarItem, status: 'accepted' | 'declin
       <p class="manage__eyebrow">Calendario</p>
       <h1>I miei calendari</h1>
       <p class="manage__hint">Tocca un calendario per gestirne nome, colore, condivisioni e integrazione.</p>
+      <NuxtLink class="create-link" to="/calendar/create">+ Crea calendario</NuxtLink>
     </header>
 
     <p v-if="actionMessage" class="feedback feedback--success" role="status">{{ actionMessage }}</p>
@@ -147,6 +148,19 @@ h2 {
 .calendar-card__body span {
   color: var(--color-muted);
   line-height: 1.5;
+}
+
+.create-link {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 12px;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 10px;
+  background: var(--color-ink);
+  color: #ffffff;
+  font-weight: 900;
+  text-decoration: none;
 }
 
 .manage__section {

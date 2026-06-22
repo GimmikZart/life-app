@@ -22,6 +22,7 @@ type CalendarItem = {
   myStatus: MemberStatus
   myIsPrimary: boolean
   myAutoIntegrate: boolean
+  shareToken: string | null
   members: CalendarMember[]
 }
 
@@ -149,6 +150,39 @@ function updateMember(member: CalendarMember) {
   })
 }
 
+const shareCopied = ref(false)
+const shareLink = computed(() =>
+  calendar.value?.shareToken && import.meta.client
+    ? `${window.location.origin}/calendar/join/${calendar.value.shareToken}`
+    : ''
+)
+
+function generateShareLink() {
+  return runAction(async () => {
+    await $fetch(`/api/calendars/${calendarId.value}/share`, { method: 'POST' })
+    await refresh()
+
+    return 'Link di condivisione generato.'
+  })
+}
+
+function revokeShareLink() {
+  return runAction(async () => {
+    await $fetch(`/api/calendars/${calendarId.value}/share` as string, { method: 'DELETE' })
+    await refresh()
+
+    return 'Link revocato.'
+  })
+}
+
+function copyShareLink() {
+  if (import.meta.client && navigator.clipboard && shareLink.value) {
+    navigator.clipboard.writeText(shareLink.value)
+    shareCopied.value = true
+    setTimeout(() => { shareCopied.value = false }, 2000)
+  }
+}
+
 function removeMember(member: CalendarMember) {
   return runAction(async () => {
     await $fetch(`/api/calendars/${calendarId.value}/members/${member.userId}` as string, { method: 'DELETE' })
@@ -235,6 +269,19 @@ function removeMember(member: CalendarMember) {
             </button>
           </div>
         </article>
+      </section>
+
+      <section v-if="isOwner" class="detail-card">
+        <h2>Condivisione via link</h2>
+        <p class="share-hint">Chiunque apre il link (ed è registrato) entra nel calendario come viewer.</p>
+        <template v-if="calendar.shareToken">
+          <div class="share-row">
+            <input :value="shareLink" type="text" readonly>
+            <button class="button button--secondary" type="button" @click="copyShareLink">{{ shareCopied ? 'Copiato!' : 'Copia' }}</button>
+          </div>
+          <button class="button button--ghost" type="button" :disabled="isSubmitting" @click="revokeShareLink">Revoca link</button>
+        </template>
+        <button v-else class="button button--primary" type="button" :disabled="isSubmitting" @click="generateShareLink">Genera link</button>
       </section>
 
       <section v-if="isOwner" class="detail-card detail-card--danger">
@@ -428,6 +475,23 @@ select:disabled,
   width: 100%;
   background: #fee2e2;
   color: #991b1b;
+}
+
+.share-hint {
+  margin: 0 0 12px;
+  color: var(--color-muted);
+  line-height: 1.5;
+}
+
+.share-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.share-row input {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .feedback {

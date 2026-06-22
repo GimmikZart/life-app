@@ -56,7 +56,10 @@ export const calendars = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     color: text('color').notNull().default('#2563eb'),
-    type: calendarTypeEnum('type').notNull().default('personal')
+    type: calendarTypeEnum('type').notNull().default('personal'),
+    // Token per la condivisione via link pubblico: se valorizzato, chiunque abbia
+    // il link (ed e' registrato) puo' unirsi come viewer. Null = nessun link attivo.
+    shareToken: text('share_token').unique()
   },
   (table) => [
     index('calendars_user_id_idx').on(table.userId)
@@ -207,5 +210,29 @@ export const eventOfficialPins = pgTable(
   (table) => [
     unique('event_official_pins_event_id_user_id_unique').on(table.eventId, table.userId),
     index('event_official_pins_user_id_idx').on(table.userId)
+  ]
+)
+
+// Eccezioni di ricorrenza: una riga = override/cancellazione di UNA singola
+// occorrenza di una serie ricorrente, identificata da `occurrenceDate` (la data
+// di inizio generata dalla RRULE). isCancelled = occorrenza eliminata; altrimenti
+// i campi non-null sovrascrivono quelli della serie solo per quell'occorrenza.
+export const eventExceptions = pgTable(
+  'event_exceptions',
+  {
+    eventId: uuid('event_id')
+      .notNull()
+      .references(() => calendarEvents.id, { onDelete: 'cascade' }),
+    occurrenceDate: timestamp('occurrence_date', { withTimezone: true }).notNull(),
+    isCancelled: boolean('is_cancelled').notNull().default(false),
+    title: text('title'),
+    category: text('category'),
+    startAt: timestamp('start_at', { withTimezone: true }),
+    endAt: timestamp('end_at', { withTimezone: true }),
+    visibilityDefault: eventVisibilityEnum('visibility_default')
+  },
+  (table) => [
+    unique('event_exceptions_event_id_occurrence_date_unique').on(table.eventId, table.occurrenceDate),
+    index('event_exceptions_event_id_idx').on(table.eventId)
   ]
 )
