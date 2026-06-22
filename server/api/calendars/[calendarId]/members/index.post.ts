@@ -5,6 +5,7 @@ import { calendarMembers, users } from '../../../../database/schema'
 import { requireAuthenticatedUser } from '../../../../utils/auth'
 import { requireCalendarPermission } from '../../../../utils/calendar-access'
 import { parseInvitePayload } from '../../../../utils/calendar-validation'
+import { getExternalConnectionForCalendar } from '../../../../utils/external-calendar-sync'
 
 export default defineEventHandler(async (event) => {
   const currentUser = await requireAuthenticatedUser(event)
@@ -19,6 +20,14 @@ export default defineEventHandler(async (event) => {
   const body = await readBody<Record<string, unknown>>(event)
   const payload = parseInvitePayload(body)
   const db = useDatabase()
+  const externalConnection = await getExternalConnectionForCalendar(calendarId, currentUser.id)
+
+  if (externalConnection) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'I calendari esterni non sono invitabili: duplica gli eventi su un calendario Life App.'
+    })
+  }
 
   const [targetUser] = await db
     .select({

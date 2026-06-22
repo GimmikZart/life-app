@@ -24,6 +24,9 @@ type CalendarOccurrence = {
   isRecurring: boolean
   visibilityDefault: 'clear' | 'busy' | 'hidden'
   pinnedToPrimary: boolean
+  source: string
+  syncStatus: 'synced' | 'pending' | 'error'
+  syncError: string | null
   association: { userId: string; name: string | null; color: string | null; icon: string | null } | null
 }
 
@@ -55,7 +58,7 @@ const props = withDefaults(defineProps<{
 const viewModes: { value: CalendarViewMode; label: string; fullCalendarView: string }[] = [
   { value: 'year', label: 'Anno', fullCalendarView: 'multiMonthYear' },
   { value: 'month', label: 'Mese', fullCalendarView: 'dayGridMonth' },
-  { value: 'week', label: 'Settimana', fullCalendarView: 'timeGridWeek' },
+  { value: 'week', label: 'Sett.', fullCalendarView: 'timeGridWeek' },
   { value: 'day', label: 'Giorno', fullCalendarView: 'timeGridDay' },
   { value: 'events', label: 'Eventi', fullCalendarView: 'listMonth' }
 ]
@@ -578,6 +581,24 @@ function formatOccurrenceMeta(occurrence: CalendarOccurrence) {
   })}`
 }
 
+function providerLabel(source: string) {
+  if (source === 'google') return 'Google'
+  if (source === 'microsoft') return 'Outlook'
+
+  return 'Life App'
+}
+
+function syncStatusLabel(occurrence: CalendarOccurrence) {
+  if (occurrence.source === 'life_app') {
+    return ''
+  }
+
+  if (occurrence.syncStatus === 'pending') return 'Sync in attesa'
+  if (occurrence.syncStatus === 'error') return 'Sync in errore'
+
+  return 'Sincronizzato'
+}
+
 function startOfLocalDate(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate())
 }
@@ -736,7 +757,13 @@ function capitalizeDate(value: string) {
       <div class="occurrence-detail__tags">
         <span v-if="selectedOccurrence.isRecurring" class="occurrence-detail__badge">Ricorrente</span>
         <span v-if="selectedOccurrence.pinnedToPrimary" class="occurrence-detail__badge occurrence-detail__badge--pin">Nel principale</span>
+        <span v-if="selectedOccurrence.source !== 'life_app'" class="occurrence-detail__badge occurrence-detail__badge--sync">
+          {{ providerLabel(selectedOccurrence.source) }} · {{ syncStatusLabel(selectedOccurrence) }}
+        </span>
       </div>
+      <p v-if="selectedOccurrence.syncStatus === 'error' && selectedOccurrence.syncError" class="occurrence-detail__sync-error">
+        {{ selectedOccurrence.syncError }}
+      </p>
 
       <div class="occurrence-detail__actions">
         <button class="occurrence-detail__btn occurrence-detail__btn--primary" type="button" @click="openSelectedEvent">
@@ -1085,6 +1112,19 @@ h2 {
 .occurrence-detail__badge--pin {
   background: #dcfce7;
   color: #166534;
+}
+
+.occurrence-detail__badge--sync {
+  background: #eef2ff;
+  color: #3730a3;
+}
+
+.occurrence-detail__sync-error {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fee2e2;
+  color: #991b1b;
+  font-weight: 800;
 }
 
 .occurrence-detail__actions {

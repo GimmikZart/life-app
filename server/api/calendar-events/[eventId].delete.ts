@@ -4,6 +4,7 @@ import { useDatabase } from '../../database/client'
 import { calendarEvents, eventExceptions } from '../../database/schema'
 import { requireAuthenticatedUser } from '../../utils/auth'
 import { requireCalendarPermission } from '../../utils/calendar-access'
+import { enqueueExternalDelete } from '../../utils/external-calendar-sync'
 import { withRecurrenceUntil } from '../../utils/recurrence-scope'
 
 // Eliminazione con scope:
@@ -26,9 +27,17 @@ export default defineEventHandler(async (event) => {
   const [existingEvent] = await db
     .select({
       id: calendarEvents.id,
+      userId: calendarEvents.userId,
       calendarId: calendarEvents.calendarId,
+      title: calendarEvents.title,
+      category: calendarEvents.category,
+      startAt: calendarEvents.startAt,
+      endAt: calendarEvents.endAt,
       isRecurring: calendarEvents.isRecurring,
-      recurrenceRule: calendarEvents.recurrenceRule
+      recurrenceRule: calendarEvents.recurrenceRule,
+      externalConnectionId: calendarEvents.externalConnectionId,
+      externalCalendarId: calendarEvents.externalCalendarId,
+      externalId: calendarEvents.externalId
     })
     .from(calendarEvents)
     .where(eq(calendarEvents.id, eventId))
@@ -44,6 +53,13 @@ export default defineEventHandler(async (event) => {
   const canScope = existingEvent.isRecurring && existingEvent.recurrenceRule && occurrence && !Number.isNaN(occurrence.getTime())
 
   if (scope === 'single' && canScope) {
+    if (existingEvent.externalConnectionId) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Le eliminazioni di una singola occorrenza di un calendario esterno non sono ancora sincronizzabili: elimina tutta la serie.'
+      })
+    }
+
     await db
       .insert(eventExceptions)
       .values({ eventId, occurrenceDate: occurrence as Date, isCancelled: true })
@@ -56,16 +72,24 @@ export default defineEventHandler(async (event) => {
   }
 
   if (scope === 'following' && canScope) {
+    if (existingEvent.externalConnectionId) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Le eliminazioni "questo e i successivi" sui calendari esterni non sono ancora sincronizzabili: elimina tutta la serie.'
+      })
+    }
+
     // La serie termina appena prima dell'occorrenza selezionata.
     const until = new Date((occurrence as Date).getTime() - 1000)
     await db
       .update(calendarEvents)
-      .set({ recurrenceRule: withRecurrenceUntil(existingEvent.recurrenceRule as string, until) })
+      .set({ recurrenceRule: withRecurrenceUntil(existingEvent.recurrenceRule as string, until), updatedAt: new Date() })
       .where(eq(calendarEvents.id, eventId))
 
     return { ok: true, scope: 'following' }
   }
 
+  await enqueueExternalDelete(existingEvent)
   await db.delete(calendarEvents).where(eq(calendarEvents.id, eventId))
 
   return { ok: true, scope: 'all' }

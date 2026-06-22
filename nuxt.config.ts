@@ -16,6 +16,12 @@ export default defineNuxtConfig({
       tenantId: process.env.MICROSOFT_TENANT_ID,
       redirectUri: process.env.MICROSOFT_REDIRECT_URI
     },
+    externalCalendar: {
+      tokenSecret: process.env.EXTERNAL_CALENDAR_TOKEN_SECRET,
+      webhookBaseUrl: process.env.EXTERNAL_CALENDAR_WEBHOOK_BASE_URL,
+      syncPastDays: Number(process.env.EXTERNAL_CALENDAR_SYNC_PAST_DAYS ?? 365),
+      syncFutureDays: Number(process.env.EXTERNAL_CALENDAR_SYNC_FUTURE_DAYS ?? 365)
+    },
     public: {
       supabase: {
         url: process.env.NUXT_PUBLIC_SUPABASE_URL,

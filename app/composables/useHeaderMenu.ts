@@ -17,6 +17,7 @@ export function useHeaderMenu() {
       return [
         { label: 'Confronta disponibilità', to: '/calendar/availability' },
         { label: 'I miei calendari', to: '/calendar/manage' },
+        { label: 'Integrazioni', to: '/calendar/integrations' },
         { label: 'Relazioni', to: '/calendar/relations' }
       ]
     }

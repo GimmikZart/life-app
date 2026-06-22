@@ -33,6 +33,9 @@ export type CalendarEventForExpansion = {
   recurrenceRule: string | null
   visibilityDefault: 'clear' | 'busy' | 'hidden'
   pinnedToPrimary: boolean
+  source?: string
+  syncStatus?: 'synced' | 'pending' | 'error'
+  syncError?: string | null
   association?: AssociationInfo | null
 }
 
@@ -52,6 +55,9 @@ export type CalendarEventOccurrence = {
   isRecurring: boolean
   visibilityDefault: 'clear' | 'busy' | 'hidden'
   pinnedToPrimary: boolean
+  source: string
+  syncStatus: 'synced' | 'pending' | 'error'
+  syncError: string | null
   association: AssociationInfo | null
 }
 
@@ -135,6 +141,9 @@ function toOccurrence(
     isRecurring: event.isRecurring,
     visibilityDefault: overrides?.visibilityDefault ?? event.visibilityDefault,
     pinnedToPrimary: event.pinnedToPrimary,
+    source: event.source ?? 'life_app',
+    syncStatus: event.syncStatus ?? 'synced',
+    syncError: event.syncError ?? null,
     association: event.association ?? null
   }
 }

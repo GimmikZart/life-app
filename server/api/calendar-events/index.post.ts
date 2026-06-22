@@ -3,6 +3,11 @@ import { calendarEvents } from '../../database/schema'
 import { requireAuthenticatedUser } from '../../utils/auth'
 import { parseEventPayload } from '../../utils/calendar-event-validation'
 import { requireCalendarPermission } from '../../utils/calendar-access'
+import {
+  buildExternalEventValuesForCalendar,
+  enqueueExternalEventSync,
+  getExternalConnectionForCalendar
+} from '../../utils/external-calendar-sync'
 
 export default defineEventHandler(async (event) => {
   const currentUser = await requireAuthenticatedUser(event)
@@ -11,6 +16,7 @@ export default defineEventHandler(async (event) => {
   await requireCalendarPermission(payload.calendarId, currentUser.id, ['owner', 'editor'])
 
   const db = useDatabase()
+  const externalConnection = await getExternalConnectionForCalendar(payload.calendarId, currentUser.id)
   const [calendarEvent] = await db
     .insert(calendarEvents)
     .values({
@@ -22,9 +28,15 @@ export default defineEventHandler(async (event) => {
       endAt: payload.endAt,
       isRecurring: payload.isRecurring,
       recurrenceRule: payload.recurrenceRule,
-      visibilityDefault: payload.visibilityDefault
+      visibilityDefault: payload.visibilityDefault,
+      ...buildExternalEventValuesForCalendar(externalConnection),
+      updatedAt: new Date()
     })
     .returning()
+
+  if (externalConnection) {
+    await enqueueExternalEventSync(calendarEvent.id, 'create')
+  }
 
   return {
     event: calendarEvent

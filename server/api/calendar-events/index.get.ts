@@ -72,7 +72,10 @@ export default defineEventHandler(async (event) => {
       endAt: calendarEvents.endAt,
       isRecurring: calendarEvents.isRecurring,
       recurrenceRule: calendarEvents.recurrenceRule,
-      visibilityDefault: calendarEvents.visibilityDefault
+      visibilityDefault: calendarEvents.visibilityDefault,
+      source: calendarEvents.source,
+      syncStatus: calendarEvents.syncStatus,
+      syncError: calendarEvents.syncError
     })
     .from(calendarEvents)
     .innerJoin(calendars, eq(calendars.id, calendarEvents.calendarId))
@@ -182,7 +185,10 @@ export default defineEventHandler(async (event) => {
             color: typeof association.displayConfig?.color === 'string' ? association.displayConfig.color : null,
             icon: typeof association.displayConfig?.icon === 'string' ? association.displayConfig.icon : null
           }
-        : null
+        : null,
+      source: visible.source,
+      syncStatus: visible.syncStatus,
+      syncError: visible.syncError
     })
   }
 

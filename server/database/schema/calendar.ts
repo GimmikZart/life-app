@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm'
 import {
   boolean,
   index,
+  integer,
   jsonb,
   pgEnum,
   pgTable,
@@ -66,6 +67,47 @@ export const calendars = pgTable(
   ]
 )
 
+export type ExternalCalendarProvider = 'google' | 'microsoft'
+export type ExternalCalendarConnectionStatus = 'connected' | 'needs_reauth' | 'error'
+export type ExternalCalendarEventSyncStatus = 'synced' | 'pending' | 'error'
+export type ExternalCalendarSyncOperation = 'create' | 'update' | 'delete'
+export type ExternalCalendarSyncJobStatus = 'pending' | 'processing' | 'done' | 'error'
+
+export const externalCalendarConnections = pgTable(
+  'external_calendar_connections',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    provider: text('provider').$type<ExternalCalendarProvider>().notNull(),
+    calendarId: uuid('calendar_id').references(() => calendars.id, { onDelete: 'set null' }),
+    providerAccountEmail: text('provider_account_email'),
+    providerCalendarId: text('provider_calendar_id').notNull().default('primary'),
+    providerCalendarName: text('provider_calendar_name'),
+    accessTokenEncrypted: text('access_token_encrypted').notNull(),
+    refreshTokenEncrypted: text('refresh_token_encrypted'),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    scope: text('scope'),
+    syncCursor: text('sync_cursor'),
+    webhookChannelId: text('webhook_channel_id'),
+    webhookResourceId: text('webhook_resource_id'),
+    webhookSubscriptionId: text('webhook_subscription_id'),
+    webhookSecretEncrypted: text('webhook_secret_encrypted'),
+    webhookExpiresAt: timestamp('webhook_expires_at', { withTimezone: true }),
+    status: text('status').$type<ExternalCalendarConnectionStatus>().notNull().default('connected'),
+    lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
+    lastSyncError: text('last_sync_error'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => [
+    unique('external_calendar_connections_user_provider_unique').on(table.userId, table.provider),
+    index('external_calendar_connections_user_idx').on(table.userId),
+    index('external_calendar_connections_calendar_idx').on(table.calendarId)
+  ]
+)
+
 export const calendarMembers = pgTable(
   'calendar_members',
   {
@@ -113,14 +155,57 @@ export const calendarEvents = pgTable(
     recurrenceRule: text('recurrence_rule'),
     visibilityDefault: eventVisibilityEnum('visibility_default').notNull().default('clear'),
     source: text('source').notNull().default('life_app'),
+    externalConnectionId: uuid('external_connection_id').references(() => externalCalendarConnections.id, {
+      onDelete: 'set null'
+    }),
+    externalCalendarId: text('external_calendar_id'),
     externalId: text('external_id'),
+    externalUpdatedAt: timestamp('external_updated_at', { withTimezone: true }),
+    syncStatus: text('sync_status').$type<ExternalCalendarEventSyncStatus>().notNull().default('synced'),
+    syncError: text('sync_error'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     // Ciclo 3 colleghera questo campo a actions.id con una foreign key reale.
     actionId: uuid('action_id')
   },
   (table) => [
     index('calendar_events_calendar_start_idx').on(table.calendarId, table.startAt),
     index('calendar_events_user_start_idx').on(table.userId, table.startAt),
-    unique('calendar_events_source_external_id_unique').on(table.source, table.externalId)
+    index('calendar_events_external_connection_idx').on(table.externalConnectionId),
+    unique('calendar_events_external_identity_unique').on(
+      table.externalConnectionId,
+      table.externalCalendarId,
+      table.externalId
+    )
+  ]
+)
+
+export const externalCalendarSyncJobs = pgTable(
+  'external_calendar_sync_jobs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    connectionId: uuid('connection_id')
+      .notNull()
+      .references(() => externalCalendarConnections.id, { onDelete: 'cascade' }),
+    eventId: uuid('event_id').references(() => calendarEvents.id, { onDelete: 'set null' }),
+    operation: text('operation').$type<ExternalCalendarSyncOperation>().notNull(),
+    status: text('status').$type<ExternalCalendarSyncJobStatus>().notNull().default('pending'),
+    payload: jsonb('payload')
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    attempts: integer('attempts').notNull().default(0),
+    error: text('error'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => [
+    index('external_calendar_sync_jobs_connection_status_idx').on(table.connectionId, table.status),
+    index('external_calendar_sync_jobs_user_status_idx').on(table.userId, table.status),
+    index('external_calendar_sync_jobs_event_idx').on(table.eventId)
   ]
 )
 
