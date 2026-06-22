@@ -403,10 +403,7 @@ const microsoftProvider: ExternalProviderAdapter = {
     let nextUrl: string | null = `/me/calendarView?${params}`
 
     while (nextUrl) {
-      const response = await graphRequest<{
-        value?: MicrosoftEvent[]
-        '@odata.nextLink'?: string
-      }>(connection, nextUrl)
+      const response: { value?: MicrosoftEvent[]; '@odata.nextLink'?: string } = await graphRequest(connection, nextUrl)
 
       for (const item of response.value ?? []) {
         const startAt = parseMicrosoftDate(item.start)

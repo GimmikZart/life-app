@@ -135,6 +135,10 @@ export default defineEventHandler(async (event) => {
         })
         .returning()
 
+      if (!newEvent) {
+        throw createError({ statusCode: 500, statusMessage: 'Unable to create event.' })
+      }
+
       return newEvent
     })
 
@@ -178,6 +182,10 @@ export default defineEventHandler(async (event) => {
     })
     .where(eq(calendarEvents.id, eventId))
     .returning()
+
+  if (!calendarEvent) {
+    throw createError({ statusCode: 500, statusMessage: 'Unable to update event.' })
+  }
 
   if (targetExternalConnection) {
     await enqueueExternalEventSync(calendarEvent.id, calendarEvent.externalId ? 'update' : 'create')

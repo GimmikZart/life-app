@@ -34,6 +34,10 @@ export default defineEventHandler(async (event) => {
     })
     .returning()
 
+  if (!calendarEvent) {
+    throw createError({ statusCode: 500, statusMessage: 'Unable to create event.' })
+  }
+
   if (externalConnection) {
     await enqueueExternalEventSync(calendarEvent.id, 'create')
   }

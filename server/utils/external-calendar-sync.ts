@@ -80,6 +80,10 @@ export async function upsertExternalCalendarConnection(input: OAuthConnectionInp
     })
     .returning()
 
+  if (!connection) {
+    throw createError({ statusCode: 500, statusMessage: 'Unable to save calendar connection.' })
+  }
+
   return ensureExternalCalendar(connection)
 }
 
@@ -177,6 +181,10 @@ export async function ensureExternalCalendar(connection: ConnectionRow) {
       })
       .returning()
 
+    if (!calendar) {
+      throw createError({ statusCode: 500, statusMessage: 'Unable to create external calendar.' })
+    }
+
     await tx.insert(calendarMembers).values({
       calendarId: calendar.id,
       userId: connection.userId,
@@ -195,6 +203,10 @@ export async function ensureExternalCalendar(connection: ConnectionRow) {
       })
       .where(eq(externalCalendarConnections.id, connection.id))
       .returning()
+
+    if (!updated) {
+      throw createError({ statusCode: 500, statusMessage: 'Unable to link external calendar.' })
+    }
 
     return updated
   })
