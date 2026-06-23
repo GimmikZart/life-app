@@ -22,6 +22,7 @@ type LoadedEvent = {
   recurrenceRule: string | null
   visibilityDefault: EventVisibility
   objectiveIds?: string[]
+  skills?: SkillLink[]
   association: { userId: string; name: string | null; color: string | null; icon: string | null } | null
 }
 
@@ -30,6 +31,11 @@ type RelationshipsResponse = { connections: Connection[]; incomingRequests: unkn
 
 type ObjectiveOption = { id: string; title: string }
 type ObjectivesResponse = { objectives: ObjectiveOption[] }
+
+type SkillContributionType = 'primary' | 'secondary'
+type SkillLink = { skillId: string; contributionWeight: number; type: SkillContributionType }
+type SkillOption = { id: string; label: string }
+type SkillsApiResponse = { skills: { id: string; name: string; subs: { id: string; name: string }[] }[] }
 
 const iconOptions = ['', '❤️', '👤', '👥', '💼', '🎉', '🏠', '🍽️']
 
@@ -74,6 +80,17 @@ const { data: objectivesData } = await useFetch<ObjectivesResponse>('/api/object
 })
 const objectiveOptions = computed(() => objectivesData.value?.objectives ?? [])
 
+// Skill dell'utente (appiattite macro + sub) per la sezione "Skill alimentate".
+const { data: skillsData } = await useFetch<SkillsApiResponse>('/api/skills', {
+  default: () => ({ skills: [] })
+})
+const skillOptions = computed<SkillOption[]>(() =>
+  (skillsData.value?.skills ?? []).flatMap((macro) => [
+    { id: macro.id, label: macro.name },
+    ...macro.subs.map((sub) => ({ id: sub.id, label: `${macro.name} › ${sub.name}` }))
+  ])
+)
+
 const writableCalendars = computed(() =>
   props.calendars.filter((calendar) => calendar.myPermission === 'owner' || calendar.myPermission === 'editor')
 )
@@ -93,12 +110,15 @@ const eventForm = reactive({
   associatedUserId: '',
   associatedColor: '#db2777',
   associatedIcon: '',
-  objectiveIds: [] as string[]
+  objectiveIds: [] as string[],
+  skills: [] as SkillLink[]
 })
 // Contatto associato presente al caricamento (per sapere se va rimosso al salvataggio).
 const loadedAssociatedUserId = ref('')
 // Obiettivi collegati al caricamento (per riconciliare i link al salvataggio).
 const loadedObjectiveIds = ref<string[]>([])
+// Skill collegate al caricamento (per riconciliare i link al salvataggio).
+const loadedSkillIds = ref<string[]>([])
 
 const route = useRoute()
 const editId = typeof route.query.eventId === 'string' ? route.query.eventId : ''
@@ -181,8 +201,10 @@ function resetEventForm() {
   eventForm.associatedColor = '#db2777'
   eventForm.associatedIcon = ''
   eventForm.objectiveIds = []
+  eventForm.skills = []
   loadedAssociatedUserId.value = ''
   loadedObjectiveIds.value = []
+  loadedSkillIds.value = []
 }
 
 function applyLoadedEvent(event: LoadedEvent) {
@@ -199,6 +221,8 @@ function applyLoadedEvent(event: LoadedEvent) {
   loadedAssociatedUserId.value = event.association?.userId ?? ''
   eventForm.objectiveIds = [...(event.objectiveIds ?? [])]
   loadedObjectiveIds.value = [...(event.objectiveIds ?? [])]
+  eventForm.skills = (event.skills ?? []).map((link) => ({ ...link }))
+  loadedSkillIds.value = (event.skills ?? []).map((link) => link.skillId)
   applyRecurrenceFromRule(event.isRecurring ? event.recurrenceRule : null)
 }
 
@@ -210,6 +234,24 @@ function toggleObjective(objectiveId: string) {
   } else {
     eventForm.objectiveIds.splice(index, 1)
   }
+}
+
+function isSkillLinked(skillId: string) {
+  return eventForm.skills.some((link) => link.skillId === skillId)
+}
+
+function toggleSkill(skillId: string) {
+  const index = eventForm.skills.findIndex((link) => link.skillId === skillId)
+
+  if (index === -1) {
+    eventForm.skills.push({ skillId, contributionWeight: 100, type: 'primary' })
+  } else {
+    eventForm.skills.splice(index, 1)
+  }
+}
+
+function skillLink(skillId: string) {
+  return eventForm.skills.find((link) => link.skillId === skillId)
 }
 
 async function saveEvent() {
@@ -231,6 +273,8 @@ async function saveEvent() {
   const previousAssociated = loadedAssociatedUserId.value
   const desiredObjectiveIds = [...eventForm.objectiveIds]
   const previousObjectiveIds = [...loadedObjectiveIds.value]
+  const desiredSkills = eventForm.skills.map((link) => ({ ...link }))
+  const previousSkillIds = [...loadedSkillIds.value]
 
   const scope = showScopeChoice.value ? editScope.value : 'all'
 
@@ -278,6 +322,16 @@ async function saveEvent() {
     for (const objectiveId of previousObjectiveIds) {
       if (!desiredObjectiveIds.includes(objectiveId)) {
         await $fetch('/api/event-objectives' as string, { method: 'DELETE', body: { calendarEventId: eventId, objectiveId } })
+      }
+    }
+
+    // Riconcilia le skill alimentate (POST = upsert di peso/tipo; DELETE per le rimosse).
+    for (const link of desiredSkills) {
+      await $fetch('/api/event-skills', { method: 'POST', body: { calendarEventId: eventId, ...link } })
+    }
+    for (const skillId of previousSkillIds) {
+      if (!desiredSkills.some((link) => link.skillId === skillId)) {
+        await $fetch('/api/event-skills' as string, { method: 'DELETE', body: { calendarEventId: eventId, skillId } })
       }
     }
 
@@ -518,6 +572,29 @@ function roundToNextHour(date: Date) {
           </label>
         </fieldset>
 
+        <fieldset v-if="skillOptions.length" class="objectives-choice">
+          <legend>Skill alimentate</legend>
+          <div v-for="skill in skillOptions" :key="skill.id" class="skill-option">
+            <label class="skill-option__toggle">
+              <input type="checkbox" :checked="isSkillLinked(skill.id)" @change="toggleSkill(skill.id)">
+              {{ skill.label }}
+            </label>
+            <div v-if="skillLink(skill.id)" class="skill-option__params">
+              <label>
+                Peso %
+                <input v-model.number="skillLink(skill.id)!.contributionWeight" type="number" min="0" max="100">
+              </label>
+              <label>
+                Tipo
+                <select v-model="skillLink(skill.id)!.type">
+                  <option value="primary">Primary</option>
+                  <option value="secondary">Secondary</option>
+                </select>
+              </label>
+            </div>
+          </div>
+        </fieldset>
+
         <fieldset v-if="showScopeChoice" class="scope-choice">
           <legend>Applica la modifica a</legend>
           <label><input v-model="editScope" type="radio" value="single"> Solo questo evento</label>
@@ -657,6 +734,38 @@ select {
   width: 18px;
   height: 18px;
   min-height: auto;
+}
+
+.skill-option {
+  display: grid;
+  gap: 8px;
+  padding: 8px 0;
+  border-top: 1px solid var(--color-line);
+}
+
+.skill-option:first-of-type {
+  border-top: 0;
+}
+
+.skill-option__toggle {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  font-weight: 800;
+}
+
+.skill-option__toggle input {
+  width: 18px;
+  height: 18px;
+  min-height: auto;
+}
+
+.skill-option__params {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding-left: 26px;
 }
 
 @media (min-width: 760px) {

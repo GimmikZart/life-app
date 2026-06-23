@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm'
 
 import { useDatabase } from '../../database/client'
-import { calendarEvents, eventAssociations, eventObjectives, users } from '../../database/schema'
+import { calendarEvents, eventAssociations, eventObjectives, eventSkills, users } from '../../database/schema'
 import { requireAuthenticatedUser } from '../../utils/auth'
 import { getCalendarMembership } from '../../utils/calendar-access'
 
@@ -59,6 +59,16 @@ export default defineEventHandler(async (event) => {
     .from(eventObjectives)
     .where(eq(eventObjectives.calendarEventId, eventId))
 
+  // Skill alimentate da questo evento (per precompilare il form — Ciclo 4.3).
+  const skillLinks = await db
+    .select({
+      skillId: eventSkills.skillId,
+      contributionWeight: eventSkills.contributionWeight,
+      type: eventSkills.type
+    })
+    .from(eventSkills)
+    .where(eq(eventSkills.calendarEventId, eventId))
+
   return {
     event: {
       id: row.id,
@@ -71,6 +81,7 @@ export default defineEventHandler(async (event) => {
       recurrenceRule: row.recurrenceRule,
       visibilityDefault: row.visibilityDefault,
       objectiveIds: objectiveLinks.map((link) => link.objectiveId),
+      skills: skillLinks,
       association: association
         ? {
             userId: association.associatedUserId,
