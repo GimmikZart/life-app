@@ -191,6 +191,7 @@ function readTodayCache() {
     <header class="today-header">
       <h1>Ciao, {{ displayName }}</h1>
       <p>Ecco i tuoi prossimi impegni.</p>
+      <NuxtLink class="today-header__link" to="/actions">Le mie Action →</NuxtLink>
     </header>
 
     <p v-if="offlineNotice" class="notice notice--cache" role="status">
@@ -267,6 +268,14 @@ function readTodayCache() {
 
 .today-header {
   margin-bottom: 20px;
+}
+
+.today-header__link {
+  display: inline-block;
+  margin-top: 4px;
+  color: var(--color-accent);
+  font-weight: 900;
+  text-decoration: none;
 }
 
 h1,

@@ -30,6 +30,11 @@ export const actions = pgTable(
     // significativo (Project Knowledge v2, sez. 3.2). Il vincolo IN (1,2,3) e
     // applicato a livello DB con un CHECK nella migrazione.
     weight: integer('weight').notNull().default(1),
+    // Calendario su cui il Sotto-Ciclo 3.3 generera gli eventi/occorrenze di
+    // questa Action. NULL = usa il calendario primario dell'utente. Colonna
+    // semplice qui: la FK verso calendars.id (ON DELETE SET NULL) e dichiarata
+    // nella migrazione, per non reintrodurre l'import circolare con calendar.ts.
+    targetCalendarId: uuid('target_calendar_id'),
     // Config della frequenza (giornaliera/settimanale/mensile/data specifica).
     // Qui e solo un contenitore: la struttura concreta arriva nel Sotto-Ciclo 3.2.
     frequency: jsonb('frequency')

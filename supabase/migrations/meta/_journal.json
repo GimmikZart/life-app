@@ -71,6 +71,13 @@
       "when": 1782151733450,
       "tag": "20260622180853_bizarre_blink",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1782204751661,
+      "tag": "20260623085231_moaning_mantis",
+      "breakpoints": true
     }
   ]
 }
