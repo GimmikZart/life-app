@@ -2,13 +2,22 @@
 
 > Fa parte del Piano di Sviluppo di Life App. Vedi `00-piano-di-sviluppo-indice.md` per il contesto generale e le regole valide per tutti i Sotto-Cicli.
 
+> ⚠️ **Nota modello (revisione 2026-06).** Un'Action non è un'entità separata: è un **evento del calendario** (o, in futuro, un Todo) associato a Skill/Obiettivi (vedi `03-ciclo-action-engine.md`). Di conseguenza questo Ciclo possiede anche ciò che prima era nel "Ciclo 3 Action Engine":
+> - tabelle ponte **`event_objectives`** ed **`event_skills`** (`contribution_weight`, `type`) — al posto di `action_objectives`/`action_skills`;
+> - log completamenti **`event_completions`** (`calendar_event_id` + `occurrence_date`, unique) — al posto di `action_completions`;
+> - campo **peso (1/2/3)** su `calendar_events`;
+> - estensioni al **form evento** (sezioni Obiettivi/Skill) e comando **"segna come svolto"** su un'occorrenza.
+> Dove sotto si legge "Action", intendere "evento (o todo) associato"; dove si legge `action_*`, usare le tabelle `event_*`.
+
 ## Obiettivo del Ciclo
 
 Costruire le Core Feature Obiettivi e Skill (Project Knowledge v2, sezioni 3.3 e 3.4), incluso l'intero sistema di gamification: punteggio, livelli, Skill Momentum/Level, badge. Questo è il Ciclo più ricco di logica di calcolo del progetto: viene quindi diviso in sotto-cicli più granulari del solito, per mantenere ogni passaggio gestibile da un'AI in una sessione.
 
+Include inoltre il collegamento eventi↔Skill/Obiettivi e il completamento delle occorrenze (assorbito dal vecchio Ciclo 3, vedi nota sopra).
+
 > Nota di revisione: in seguito a un feedback di revisione del piano, i precedenti Sotto-Cicli 4.4 ("motore di calcolo punteggio") e 4.5 ("Skill Level/Momentum") sono stati ulteriormente scomposti, perché ritenuti troppo ampi per una singola sessione di sviluppo. Il calcolo punteggio è ora diviso in 4.4a (streak e consistency) e 4.4b (formula completa e scrittura). Skill Level/Momentum è diviso in 4.5a (livello e deterioramento) e 4.5b (recupero e presentazione). La numerazione dei sotto-cicli successivi (livelli, badge) è stata aggiornata di conseguenza.
 
-**Prerequisiti generali del Ciclo:** Ciclo 1, 2, 3 completati (serve l'Action Engine funzionante).
+**Prerequisiti generali del Ciclo:** Ciclo 1 e 2 completati (Calendario/eventi funzionanti). Il Ciclo 3 non lascia tabelle proprie (modello rivisto): le associazioni e il completamento si costruiscono qui, agganciati agli eventi.
 
 ---
 

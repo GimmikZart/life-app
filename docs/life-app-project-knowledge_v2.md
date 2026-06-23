@@ -127,56 +127,58 @@ Un evento "Cena con Giulia" associato a un contatto specifico riceve un colore d
 
 ---
 
-### 3.2 Action Engine — Il Centro del Modello Dati
+### 3.2 Action — Un evento (o todo) associato a Skill/Obiettivi
 
-Le **Action** sono il vero motore del sistema. Sono l'unità fondamentale attorno a cui ruota tutta l'architettura dati.
+> **Modello corretto (revisione 2026-06).** Un'Action **non è un'entità separata** con una propria tabella. Un'Action è semplicemente un **evento del Calendario** (e, in futuro, un **Todo**) a cui l'utente ha associato una o più **Skill** e/o uno o più **Obiettivi**. È l'associazione a Skill/Obiettivi che rende un evento un'Action; senza associazioni è un normale evento.
+>
+> Una precedente stesura descriveva le Action come tabella `actions` separata con un motore che "generava" eventi a calendario: quel modello è stato **abbandonato** (duplicava la ricorrenza nativa degli eventi e li rendeva non sincronizzabili). Vedi `docs/action-plan/03-ciclo-action-engine.md`.
 
 ```
-Calendario  =  centro UX
-Action      =  centro dati
+Calendario       =  dove vivono gli eventi (= le Action)
+Skill/Obiettivi  =  cosa un evento alimenta quando viene svolto
 ```
 
-Tutte le relazioni tra Obiettivi, Skill, Proprietà e Calendario passano attraverso le Action.
+**Conseguenze del modello:**
+- Gli eventi restano **sempre eventi normali**: ricorrenza nativa (RRULE) e **sincronizzazione con Google/Microsoft** valgono anche per gli eventi-Action. Non esiste un motore separato che genera eventi-copia.
+- Quando un evento-Action viene **svolto** (resta a calendario e l'utente lo segna come completato), assegna punti alle Skill collegate e fa avanzare gli Obiettivi collegati.
 
-**Un'action può:**
+**Un evento-Action può:**
 - Appartenere a uno o più Obiettivi contemporaneamente
-- Essere collegata a una o più Proprietà (opzionale)
+- Essere collegato a una o più Proprietà (opzionale)
 - Alimentare una o più Skill (opzionale)
-- Essere una routine ricorrente o un evento singolo
-- Essere copiata e modificata per creare action simili (copy & paste con parametri modificabili)
+- Essere ricorrente o singolo (è la ricorrenza nativa dell'evento)
 
 **Esempio concreto:**
 ```
-Action: "Sessione pratica Popping"
+Evento: "Sessione pratica Popping"  (evento ricorrente Lun/Mer/Ven)
   ├── Obiettivi: "Diventare bravo nel Popping" + "Partecipare alla battle di marzo"
   ├── Proprietà collegate: (nessuna)
-  ├── Skill alimentate:
-  │     Danza > Popping      [primary,  peso 80%]
-  │     Danza > Knowledge    [secondary, peso 20%]
-  └── Frequenza: Lunedì, Mercoledì, Venerdì
+  └── Skill alimentate:
+        Danza > Popping      [primary,  peso 80%]
+        Danza > Knowledge    [secondary, peso 20%]
 ```
 
-**Esempio con più skill e proprietà:**
+**Esempio con più skill:**
 ```
-Action: "Leggo un libro sul Popping"
+Evento: "Leggo un libro sul Popping"  (1 volta a settimana)
   ├── Obiettivi: "Diventare bravo nel Popping" + "Leggi 10 pagine al giorno"
   ├── Proprietà collegate: (nessuna)
-  ├── Skill alimentate:
-  │     Danza > Knowledge    [primary,  peso 40%]
-  │     Lettura > Focus      [primary,  peso 30%]
-  │     Lettura > Velocità   [primary,  peso 30%]
-  └── Frequenza: 1 volta a settimana
+  └── Skill alimentate:
+        Danza > Knowledge    [primary,  peso 40%]
+        Lettura > Focus      [primary,  peso 30%]
+        Lettura > Velocità   [primary,  peso 30%]
 ```
 
-**Configurazione di ogni Action:**
-- **Nome** — libero
-- **Peso** — 1 (routine leggera), 2 (impegno medio), 3 (sforzo significativo)
-- **Frequenza** — giornaliera, settimanale, mensile, data specifica
+**Configurazione (vive sull'evento):**
+- **Titolo / data / frequenza** — sono i campi nativi dell'evento (la frequenza è la sua ricorrenza)
+- **Peso** — 1 (routine leggera), 2 (impegno medio), 3 (sforzo significativo): campo dell'evento usato nel calcolo punti
 - **Obiettivi collegati** — uno o più (opzionale)
 - **Proprietà collegate** — una o più (opzionale)
 - **Skill alimentate** — una o più, ognuna con peso % e tipo (primary/secondary)
 
-**Importante:** il collegamento Skill–Action è configurato manualmente dall'utente sull'Action stessa. Non c'è ereditarietà automatica dall'Obiettivo. Questa scelta è stata presa deliberatamente per evitare che l'automatismo diventi più complicato da gestire della configurazione manuale, soprattutto quando l'utente vuole modificare singole action all'interno di un obiettivo.
+**Importante:** il collegamento Skill–evento è configurato manualmente dall'utente sull'evento. Non c'è ereditarietà automatica dall'Obiettivo, per evitare che l'automatismo diventi più complicato della configurazione manuale.
+
+**Todo (futuro):** oltre agli eventi, le Action includeranno i **Todo** (azioni senza orario fisso a calendario). Le associazioni a Skill/Obiettivi e il completamento → punti varranno allo stesso modo anche per i Todo.
 
 ---
 
@@ -187,11 +189,11 @@ Rappresentano direzioni verso cui l'utente vuole andare — qualcosa di astratto
 **Esempi:** Diventare bravo nel Popping, Smettere di fumare, Leggere 20 libri l'anno, Tenere la casa in ordine
 
 **Struttura:**
-- Ogni obiettivo contiene **Action** (le azioni concrete pianificate)
+- Ogni obiettivo raccoglie le **Action** che vi sono associate (eventi del calendario, e in futuro Todo)
 - Un obiettivo è essenzialmente un contenitore logico di Action — non ha logica automatica ereditata
-- Il progresso verso l'obiettivo si misura dal completamento delle sue Action
+- Il progresso verso l'obiettivo si misura dal completamento delle sue Action (eventi svolti)
 
-**Regola fondamentale:** ogni Action deve avere una data specifica o una frequenza pianificata. Non esistono action "generiche" senza schedulazione.
+**Regola fondamentale:** un'Action vive sempre su qualcosa di concreto e schedulato — un evento del calendario (con data/frequenza) o, in futuro, un Todo. Non esistono Action "astratte" slegate da un evento/todo.
 
 ---
 
@@ -423,18 +425,17 @@ objectives                        ← Core Feature Obiettivi
   ├── title, description
   └── target_date (nullable)
 
-actions                           ← unità fondamentale, centro del modello dati
-  ├── id, user_id, name
-  ├── weight (1|2|3)
-  ├── frequency (JSON — tipo ricorrenza)
-  └── is_template (boolean)
+-- NB: NON esiste una tabella `actions`. Un'Action è un evento del calendario
+-- (o, in futuro, un todo) associato a Skill/Obiettivi. Le tabelle ponte e il
+-- log dei completamenti agganciano direttamente gli eventi. Vengono create nei
+-- Cicli 4 (Obiettivi+Skill) e 5 (Proprietà), quando quelle entità esistono.
 
-action_objectives                 ← tabella ponte N:N
-  ├── action_id
+event_objectives                  ← ponte N:N evento ↔ obiettivo (Ciclo 4)
+  ├── calendar_event_id
   └── objective_id
 
-action_properties                 ← tabella ponte N:N (un'action può coinvolgere più Proprietà)
-  ├── action_id
+event_properties                  ← ponte N:N evento ↔ proprietà (Ciclo 5)
+  ├── calendar_event_id
   └── property_id
 
 skills
@@ -446,8 +447,8 @@ skill_weights                     ← peso sub-skill rispetto alla macro
   ├── child_skill_id
   └── weight (0-100)
 
-action_skills                     ← tabella ponte N:N con parametri
-  ├── action_id
+event_skills                      ← ponte N:N evento ↔ skill con parametri (Ciclo 4)
+  ├── calendar_event_id
   ├── skill_id
   ├── contribution_weight (0-100)
   └── type (primary | secondary)
@@ -458,24 +459,26 @@ skill_progress                    ← storico progressione
   ├── skill_momentum (dinamico, sale e scende)
   └── recorded_at
 
-action_completions                ← log completamenti
-  ├── id, action_id, user_id
+event_completions                 ← log completamenti per-occorrenza (Ciclo 4)
+  ├── id, calendar_event_id, user_id
+  ├── occurrence_date (quale occorrenza è stata svolta)
   ├── completed_at
   ├── points_awarded (JSON — breakdown per skill)
   └── notes (nullable)
+  -- unique (calendar_event_id, occurrence_date): niente doppi completamenti
 
-calendar_events
+calendar_events                   ← gli eventi SONO le Action (quando associate)
   ├── id, user_id, calendar_id (FK → calendars)
   ├── title
   ├── start_at, end_at
   ├── is_recurring (boolean)
-  ├── recurrence_rule (JSON — RRULE)
-  ├── action_id (nullable — se è un'action schedulata)
-  ├── source (internal | google | outlook | caldav)
+  ├── recurrence_rule (RRULE)
+  ├── weight (1|2|3 — usato nel calcolo punti quando l'evento è un'Action)
+  ├── source (life_app | google | outlook | caldav)
   ├── external_id (nullable — ID nel calendario esterno)
   ├── visibility_default (clear | busy | hidden)
   ├── category (nullable — stringa libera per regole di visibilità)
-  └── pinned_to_primary (bool — integrazione manuale nella vista ufficiale)
+  └── (integrazione manuale nella vista ufficiale: tabella event_official_pins)
 
 relationships                     ← connessioni tra utenti (handshake reciproco)
   ├── id, user_id, target_user_id

@@ -20,7 +20,7 @@ Il piano è diviso in **documenti separati**, uno per Ciclo, per due motivi prat
 | `00-piano-di-sviluppo-indice.md` | Questo documento — overview, ordine, regole generali |
 | `01-ciclo-setup.md` | Setup di progetto, infrastruttura, autenticazione |
 | `02-ciclo-calendario.md` | Core Feature Calendario (incluso MVP calendario condiviso) |
-| `03-ciclo-action-engine.md` | Core Feature Action Engine |
+| `03-ciclo-action-engine.md` | Modello Action (rivisto: l'evento È l'azione — vedi nota nel file) |
 | `04-ciclo-obiettivi-skill.md` | Core Feature Obiettivi + Skill (gamification) |
 | `05-ciclo-proprieta.md` | Core Feature Proprietà + sistema template |
 | `06-ciclo-integrazioni-esterne.md` | Integrazione Google Calendar, Outlook, CalDAV |
@@ -82,7 +82,7 @@ Ciclo 7 — Finanze (futuro, fuori scope V1)
 
 - Il **Setup** viene sempre prima: senza progetto inizializzato, auth e DB collegato, nessun altro ciclo può partire.
 - Il **Calendario** viene subito dopo perché è il centro UX del prodotto ed è l'MVP a time-to-value più basso (vedi Project Knowledge v2, sezione 5 e 7): un utente può già ottenere valore da calendario + condivisione senza nessuna delle feature successive.
-- L'**Action Engine** viene dopo il Calendario perché le Action si appoggiano già a un concetto di evento/data che il Calendario ha introdotto, ma a sua volta deve esistere prima che Obiettivi, Skill e Proprietà possano collegarsi a qualcosa.
+- L'**Action** (rivisto): un'Action non è un'entità separata ma un **evento del calendario** (o, in futuro, un Todo) associato a Skill/Obiettivi. Non c'è quindi un "Action Engine" autonomo da costruire fra Calendario e Obiettivi: il modello e l'implementazione (associazioni evento↔skill/obiettivo, completamento, punti) vivono nel Ciclo 4. Vedi `03-ciclo-action-engine.md`.
 - **Obiettivi + Skill** sono raggruppati in un solo Ciclo perché sono fortemente interdipendenti (il valore delle Skill esiste solo se ci sono Action completate, e gli Obiettivi sono "contenitori" di Action) e perché rappresentano insieme il layer di gamification.
 - Le **Proprietà** arrivano dopo perché dipendono dall'Action Engine (le Action si collegano alle Proprietà) ma sono concettualmente indipendenti da Obiettivi/Skill — possono quindi slittare prima o dopo il Ciclo 4 se necessario, ma di default vengono dopo per restare fedeli alla roadmap del Project Knowledge.
 - Le **Integrazioni esterne** vengono dopo perché richiedono che il modello di Calendario sia stabile (altrimenti si rischia di dover ri-progettare la sincronizzazione più volte).
@@ -100,7 +100,7 @@ Alcuni Sotto-Cicli originari sono stati scomposti in seguito a un feedback di re
 |---|---|
 | 1 — Setup | 1.1, 1.2, 1.3, 1.4 |
 | 2 — Calendario | 2.1, 2.2, 2.3, 2.4, **2.5a, 2.5b**, 2.6 |
-| 3 — Action Engine | 3.1, 3.2, 3.3, 3.4 |
+| 3 — Action (rivisto) | ~~3.1–3.4~~ revertati (modello a tabella `actions` abbandonato). Le associazioni evento↔skill/obiettivo + completamento confluiscono nel Ciclo 4. |
 | 4 — Obiettivi + Skill | 4.1, 4.2, 4.3, **4.4a, 4.4b**, **4.5a, 4.5b**, 4.6, 4.7 |
 | 5 — Proprietà | 5.1, 5.2, 5.3 |
 | 6 — Integrazioni esterne | 6.1, **6.2a, 6.2b**, **6.3a, 6.3b**, 6.4 |
@@ -111,6 +111,11 @@ Alcuni Sotto-Cicli originari sono stati scomposti in seguito a un feedback di re
 ## Changelog di revisione
 
 Questa sezione traccia le revisioni sostanziali fatte al piano dopo la sua prima stesura, per mantenere visibile cosa è cambiato e perché, senza dover confrontare versioni precedenti dei file.
+
+**Revisione 2 (2026-06 — correzione del modello Action):**
+- **Le Action non sono entità separate.** Eliminato il concetto di tabella `actions` e di un motore che genera eventi a calendario. Un'Action è un **evento del calendario** (e, in futuro, un **Todo**) associato a una o più Skill/Obiettivi; quando l'evento è svolto assegna punti alle Skill e fa avanzare gli Obiettivi.
+- **Motivazione:** il modello a `actions` separate duplicava la ricorrenza nativa degli eventi e li rendeva non sincronizzabili con Google/Microsoft. Gli eventi devono restare eventi normali, sempre sincronizzabili.
+- **Impatto:** i sotto-cicli 3.1–3.4 (già implementati) sono stati **revertati**. Le tabelle ponte diventano `event_objectives`, `event_skills` (Ciclo 4) e `event_properties` (Ciclo 5); il log completamenti diventa `event_completions` (per-occorrenza: `calendar_event_id` + `occurrence_date`, unique). Il peso (1/2/3) diventa un campo di `calendar_events`. Project Knowledge v2 §3.2 e §4 aggiornati di conseguenza.
 
 **Revisione 1 (post feedback di Codex sul piano):**
 - **Modello inviti calendario** (Ciclo 2): introdotto il campo `status` su `calendar_members` (`pending | accepted | declined`) per gestire il flusso di invito esplicito, prima assente.

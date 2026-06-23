@@ -2,11 +2,13 @@
 
 > Fa parte del Piano di Sviluppo di Life App. Vedi `00-piano-di-sviluppo-indice.md` per il contesto generale e le regole valide per tutti i Sotto-Cicli.
 
+> ⚠️ **Nota modello (revisione 2026-06).** Un'Action è un **evento del calendario** (o, in futuro, un Todo) associato a Skill/Obiettivi/Proprietà — non un'entità separata (vedi `03-ciclo-action-engine.md`). Il collegamento Proprietà↔Action diventa quindi il ponte **`event_properties`** (`calendar_event_id` + `property_id`), al posto di `action_properties`. Dove sotto si legge "collegare alle Action", intendere "associare agli eventi".
+
 ## Obiettivo del Ciclo
 
-Costruire la Core Feature Proprietà, descritta nel Project Knowledge v2 (sezione 3.5) come Core Feature permanente basata su template. Alla fine di questo Ciclo, un utente può aggiungere Proprietà (Casa, Auto, Corpo, personalizzata) da template, con campi e Action suggerite, e collegarle alle Action esistenti.
+Costruire la Core Feature Proprietà, descritta nel Project Knowledge v2 (sezione 3.5) come Core Feature permanente basata su template. Alla fine di questo Ciclo, un utente può aggiungere Proprietà (Casa, Auto, Corpo, personalizzata) da template, con campi e attività suggerite, e collegarle agli eventi (Action) esistenti tramite `event_properties`.
 
-**Prerequisiti generali del Ciclo:** Ciclo 1, 2, 3 completati. Il Ciclo 4 (Obiettivi+Skill) non è uno stretto prerequisito tecnico, ma il piano di sviluppo lo posiziona prima (vedi `00-piano-di-sviluppo-indice.md`, sezione "Ordine dei Cicli") — se si decide di anticipare le Proprietà rispetto a Obiettivi/Skill, va fatto consapevolmente.
+**Prerequisiti generali del Ciclo:** Ciclo 1 e 2 completati (Calendario/eventi). Il Ciclo 4 (Obiettivi+Skill) non è uno stretto prerequisito tecnico, ma il piano di sviluppo lo posiziona prima (vedi `00-piano-di-sviluppo-indice.md`, sezione "Ordine dei Cicli") — se si decide di anticipare le Proprietà rispetto a Obiettivi/Skill, va fatto consapevolmente.
 
 ---
 
