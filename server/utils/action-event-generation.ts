@@ -92,6 +92,15 @@ function toYmd(year: number, month: number, day: number) {
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 }
 
+// Data dell'occorrenza ('YYYY-MM-DD') per un evento, nella timezone della Action.
+// E la stessa data usata in generazione, quindi e la chiave corretta per
+// action_completions.occurrence_date (Sotto-Ciclo 3.4).
+export function occurrenceDateForInstant(instant: Date, timeZone: string) {
+  const local = dateInZone(instant, timeZone)
+
+  return toYmd(local.year, local.month, local.day)
+}
+
 // --- Calcolo occorrenze ----------------------------------------------------
 
 function parseHm(time: string) {
