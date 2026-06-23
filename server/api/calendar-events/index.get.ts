@@ -1,8 +1,7 @@
-import { and, eq, gt, inArray, isNotNull, lt, or } from 'drizzle-orm'
+import { and, eq, gt, inArray, lt, or } from 'drizzle-orm'
 
 import { useDatabase } from '../../database/client'
 import {
-  actionCompletions,
   calendarEvents,
   calendarMembers,
   calendars,
@@ -76,8 +75,7 @@ export default defineEventHandler(async (event) => {
       visibilityDefault: calendarEvents.visibilityDefault,
       source: calendarEvents.source,
       syncStatus: calendarEvents.syncStatus,
-      syncError: calendarEvents.syncError,
-      actionId: calendarEvents.actionId
+      syncError: calendarEvents.syncError
     })
     .from(calendarEvents)
     .innerJoin(calendars, eq(calendars.id, calendarEvents.calendarId))
@@ -196,36 +194,12 @@ export default defineEventHandler(async (event) => {
 
   const exceptionsByEvent = await getExceptionsByEvent(visibleEventRows.map((row) => row.id))
 
-  // Completamenti (3.4): quali eventi-Action visibili risultano completati.
-  // Gli eventi-Action sono materializzati (1 riga = 1 occorrenza), quindi il
-  // legame e diretto via calendar_event_id.
-  const actionEventIds = visibleEventRows
-    .filter((row) => row.actionId)
-    .map((row) => row.id)
-  const completionRows = actionEventIds.length
-    ? await db
-        .select({ calendarEventId: actionCompletions.calendarEventId })
-        .from(actionCompletions)
-        .where(and(
-          eq(actionCompletions.userId, currentUser.id),
-          isNotNull(actionCompletions.calendarEventId),
-          inArray(actionCompletions.calendarEventId, actionEventIds)
-        ))
-    : []
-  const completedEventIds = new Set(completionRows.map((row) => row.calendarEventId))
-
-  const occurrences = expandCalendarEvents(visibleEventRows, from, to, exceptionsByEvent)
-    .map((occurrence) => ({
-      ...occurrence,
-      completed: completedEventIds.has(occurrence.eventId)
-    }))
-
   return {
     events: visibleEventRows.map((row) => ({
       ...row,
       startAt: row.startAt.toISOString(),
       endAt: row.endAt.toISOString()
     })),
-    occurrences
+    occurrences: expandCalendarEvents(visibleEventRows, from, to, exceptionsByEvent)
   }
 })

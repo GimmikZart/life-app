@@ -13,7 +13,6 @@ import {
   uuid
 } from 'drizzle-orm/pg-core'
 
-import { actions } from './actions'
 import { users } from './users'
 
 export const calendarTypeEnum = pgEnum('calendar_type', [
@@ -166,10 +165,8 @@ export const calendarEvents = pgTable(
     syncError: text('sync_error'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-    // Ciclo 3 (Sotto-Ciclo 3.1): foreign key reale verso actions.id. Se la Action
-    // viene eliminata, l'evento eventualmente sopravvissuto resta scollegato
-    // (SET NULL) invece di essere distrutto a cascata.
-    actionId: uuid('action_id').references(() => actions.id, { onDelete: 'set null' })
+    // Ciclo 3 colleghera questo campo a actions.id con una foreign key reale.
+    actionId: uuid('action_id')
   },
   (table) => [
     index('calendar_events_calendar_start_idx').on(table.calendarId, table.startAt),

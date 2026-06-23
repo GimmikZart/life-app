@@ -11,8 +11,6 @@ type CalendarOccurrence = {
   endAt: string
   isRecurring: boolean
   visibilityDefault: 'clear' | 'busy' | 'hidden'
-  actionId?: string | null
-  completed?: boolean
   association?: { userId: string; name: string | null; color: string | null; icon: string | null } | null
 }
 
@@ -56,68 +54,13 @@ const selectedDateInput = computed({
   }
 })
 
-const { data, pending, error, refresh } = await useFetch<CalendarEventsResponse>('/api/calendar-events', {
+const { data, pending, error } = await useFetch<CalendarEventsResponse>('/api/calendar-events', {
   query: eventQuery,
   default: () => readTodayCache() ?? {
     events: [],
     occurrences: []
   }
 })
-
-const completingId = ref<string | null>(null)
-const completionError = ref('')
-
-function completionErrorMessage(err: unknown) {
-  if (err instanceof Error) {
-    const fetchError = err as Error & { data?: { statusMessage?: string } }
-
-    return fetchError.data?.statusMessage ?? err.message
-  }
-
-  return 'Operazione non riuscita.'
-}
-
-async function completeOccurrence(occurrence: CalendarOccurrence) {
-  if (!occurrence.actionId || completingId.value) {
-    return
-  }
-
-  completingId.value = occurrence.id
-  completionError.value = ''
-
-  try {
-    await $fetch('/api/action-completions', {
-      method: 'POST',
-      body: { calendarEventId: occurrence.eventId }
-    })
-    await refresh()
-  } catch (err) {
-    completionError.value = completionErrorMessage(err)
-  } finally {
-    completingId.value = null
-  }
-}
-
-async function undoOccurrence(occurrence: CalendarOccurrence) {
-  if (!occurrence.actionId || completingId.value) {
-    return
-  }
-
-  completingId.value = occurrence.id
-  completionError.value = ''
-
-  try {
-    await $fetch('/api/action-completions' as string, {
-      method: 'DELETE',
-      body: { calendarEventId: occurrence.eventId }
-    })
-    await refresh()
-  } catch (err) {
-    completionError.value = completionErrorMessage(err)
-  } finally {
-    completingId.value = null
-  }
-}
 
 watch(data, (nextData) => {
   if (nextData) {
@@ -248,7 +191,6 @@ function readTodayCache() {
     <header class="today-header">
       <h1>Ciao, {{ displayName }}</h1>
       <p>Ecco i tuoi prossimi impegni.</p>
-      <NuxtLink class="today-header__link" to="/actions">Le mie Action →</NuxtLink>
     </header>
 
     <p v-if="offlineNotice" class="notice notice--cache" role="status">
@@ -259,9 +201,6 @@ function readTodayCache() {
     </p>
     <p v-else-if="error" class="notice notice--error" role="alert">
       Non riesco a caricare gli eventi in questo momento.
-    </p>
-    <p v-if="completionError" class="notice notice--error" role="alert">
-      {{ completionError }}
     </p>
 
     <section class="agenda" aria-label="Agenda giornaliera">
@@ -308,35 +247,10 @@ function readTodayCache() {
             {{ formatTime(occurrence.startAt) }}
           </time>
           <span class="agenda-row__marker" aria-hidden="true" />
-          <div class="agenda-row__content" :class="{ 'agenda-row__content--done': occurrence.completed }">
-            <strong>
-              <template v-if="occurrence.association?.icon">{{ occurrence.association.icon }} </template>{{ occurrence.title }}
-              <span v-if="occurrence.actionId" class="agenda-row__tag">Action</span>
-            </strong>
+          <div class="agenda-row__content">
+            <strong><template v-if="occurrence.association?.icon">{{ occurrence.association.icon }} </template>{{ occurrence.title }}</strong>
             <span>{{ formatDuration(occurrence) }} - {{ occurrence.calendarName }}</span>
             <small v-if="occurrence.category">{{ occurrence.category }}</small>
-            <div v-if="occurrence.actionId" class="agenda-row__complete">
-              <button
-                v-if="!occurrence.completed"
-                class="agenda-row__btn"
-                type="button"
-                :disabled="completingId === occurrence.id"
-                @click="completeOccurrence(occurrence)"
-              >
-                ✓ Completa
-              </button>
-              <template v-else>
-                <span class="agenda-row__done">✓ Completata</span>
-                <button
-                  class="agenda-row__btn agenda-row__btn--ghost"
-                  type="button"
-                  :disabled="completingId === occurrence.id"
-                  @click="undoOccurrence(occurrence)"
-                >
-                  Annulla
-                </button>
-              </template>
-            </div>
           </div>
         </article>
       </div>
@@ -353,14 +267,6 @@ function readTodayCache() {
 
 .today-header {
   margin-bottom: 20px;
-}
-
-.today-header__link {
-  display: inline-block;
-  margin-top: 4px;
-  color: var(--color-accent);
-  font-weight: 900;
-  text-decoration: none;
 }
 
 h1,
@@ -515,61 +421,6 @@ h1 {
 
 .agenda-row strong {
   overflow-wrap: anywhere;
-}
-
-.agenda-row__tag {
-  display: inline-block;
-  margin-left: 6px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--color-accent);
-  color: #ffffff;
-  font-size: 0.68rem;
-  font-weight: 900;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-  vertical-align: middle;
-}
-
-.agenda-row__content--done strong {
-  color: var(--color-muted);
-  text-decoration: line-through;
-}
-
-.agenda-row__complete {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin-top: 8px;
-}
-
-.agenda-row__btn {
-  min-height: 38px;
-  padding: 0 14px;
-  border: 0;
-  border-radius: 8px;
-  background: var(--color-ink);
-  color: #ffffff;
-  cursor: pointer;
-  font: inherit;
-  font-weight: 800;
-}
-
-.agenda-row__btn--ghost {
-  border: 1px solid #d1d5db;
-  background: #ffffff;
-  color: var(--color-ink);
-}
-
-.agenda-row__btn:disabled {
-  cursor: not-allowed;
-  opacity: 0.58;
-}
-
-.agenda-row__done {
-  color: #166534;
-  font-weight: 800;
 }
 
 .empty-state {

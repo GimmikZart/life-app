@@ -37,8 +37,6 @@ export type CalendarEventForExpansion = {
   syncStatus?: 'synced' | 'pending' | 'error'
   syncError?: string | null
   association?: AssociationInfo | null
-  // Action Engine (3.3): valorizzato sugli eventi materializzati da una Action.
-  actionId?: string | null
 }
 
 export type CalendarEventOccurrence = {
@@ -61,10 +59,6 @@ export type CalendarEventOccurrence = {
   syncStatus: 'synced' | 'pending' | 'error'
   syncError: string | null
   association: AssociationInfo | null
-  actionId: string | null
-  // Completamento dell'occorrenza (Sotto-Ciclo 3.4). Valorizzato a valle
-  // dell'espansione in base ad action_completions; default false.
-  completed: boolean
 }
 
 export function expandCalendarEvents(
@@ -150,8 +144,6 @@ function toOccurrence(
     source: event.source ?? 'life_app',
     syncStatus: event.syncStatus ?? 'synced',
     syncError: event.syncError ?? null,
-    association: event.association ?? null,
-    actionId: event.actionId ?? null,
-    completed: false
+    association: event.association ?? null
   }
 }

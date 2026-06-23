@@ -28,8 +28,6 @@ type CalendarOccurrence = {
   syncStatus: 'synced' | 'pending' | 'error'
   syncError: string | null
   association: { userId: string; name: string | null; color: string | null; icon: string | null } | null
-  actionId: string | null
-  completed: boolean
 }
 
 type CalendarEventsResponse = {
@@ -224,43 +222,6 @@ async function togglePin(occurrence: CalendarOccurrence) {
   }
 }
 
-const isCompleting = ref(false)
-
-function completionErrorMessage(error: unknown) {
-  if (error instanceof Error) {
-    const fetchError = error as Error & { data?: { statusMessage?: string } }
-
-    return fetchError.data?.statusMessage ?? error.message
-  }
-
-  return 'Operazione non riuscita.'
-}
-
-// Completa/annulla l'occorrenza di una Action, partendo dall'evento calendario
-// selezionato (Sotto-Ciclo 3.4).
-async function toggleCompletion(occurrence: CalendarOccurrence) {
-  if (!occurrence.actionId || isCompleting.value) {
-    return
-  }
-
-  isCompleting.value = true
-  errorMessage.value = ''
-
-  try {
-    await $fetch('/api/action-completions' as string, {
-      method: occurrence.completed ? 'DELETE' : 'POST',
-      body: { calendarEventId: occurrence.eventId }
-    })
-
-    occurrence.completed = !occurrence.completed
-    await loadEvents()
-  } catch (error) {
-    errorMessage.value = completionErrorMessage(error)
-  } finally {
-    isCompleting.value = false
-  }
-}
-
 const calendarTitle = computed(() => {
   return capitalizeDate(displayRange.start.toLocaleDateString('it-IT', {
     month: 'long',
@@ -282,7 +243,6 @@ const calendarEvents = computed<EventInput[]>(() =>
       backgroundColor: color,
       borderColor: color,
       textColor: '#ffffff',
-      classNames: occurrence.completed ? ['fc-event--done'] : [],
       extendedProps: { occurrence }
     }
   })
@@ -752,8 +712,8 @@ function capitalizeDate(value: string) {
       >
         <span class="day-agenda__stripe" aria-hidden="true" />
         <span class="day-agenda__time">{{ formatTime(occurrence.startAt) }}</span>
-        <span class="day-agenda__title" :class="{ 'day-agenda__title--done': occurrence.completed }">
-          <template v-if="occurrence.completed">✓ </template><template v-if="occurrence.association?.icon">{{ occurrence.association.icon }} </template>{{ occurrence.title }}
+        <span class="day-agenda__title">
+          <template v-if="occurrence.association?.icon">{{ occurrence.association.icon }} </template>{{ occurrence.title }}
         </span>
       </button>
     </section>
@@ -796,8 +756,6 @@ function capitalizeDate(value: string) {
       </p>
       <div class="occurrence-detail__tags">
         <span v-if="selectedOccurrence.isRecurring" class="occurrence-detail__badge">Ricorrente</span>
-        <span v-if="selectedOccurrence.actionId" class="occurrence-detail__badge occurrence-detail__badge--action">Action</span>
-        <span v-if="selectedOccurrence.completed" class="occurrence-detail__badge occurrence-detail__badge--done">✓ Completata</span>
         <span v-if="selectedOccurrence.pinnedToPrimary" class="occurrence-detail__badge occurrence-detail__badge--pin">Nel principale</span>
         <span v-if="selectedOccurrence.source !== 'life_app'" class="occurrence-detail__badge occurrence-detail__badge--sync">
           {{ providerLabel(selectedOccurrence.source) }} · {{ syncStatusLabel(selectedOccurrence) }}
@@ -808,16 +766,6 @@ function capitalizeDate(value: string) {
       </p>
 
       <div class="occurrence-detail__actions">
-        <button
-          v-if="selectedOccurrence.actionId"
-          class="occurrence-detail__btn occurrence-detail__btn--primary"
-          type="button"
-          :disabled="isCompleting"
-          @click="toggleCompletion(selectedOccurrence)"
-        >
-          {{ selectedOccurrence.completed ? 'Annulla completamento' : '✓ Completa Action' }}
-        </button>
-
         <button class="occurrence-detail__btn occurrence-detail__btn--primary" type="button" @click="openSelectedEvent">
           Apri / Modifica
         </button>
@@ -1257,31 +1205,6 @@ h2 {
   color: #174ea6;
   font-size: 0.76rem;
   font-weight: 900;
-}
-
-.occurrence-detail__badge--action {
-  background: var(--color-accent);
-  color: #ffffff;
-}
-
-.occurrence-detail__badge--done {
-  background: #dcfce7;
-  color: #166534;
-}
-
-.day-agenda__title--done {
-  color: var(--color-muted);
-  text-decoration: line-through;
-}
-
-/* Evento completato in vista calendario: visivamente smorzato. */
-:deep(.fc-event--done) {
-  opacity: 0.55;
-}
-
-:deep(.fc-event--done .fc-event-title),
-:deep(.fc-event--done .fc-list-event-title) {
-  text-decoration: line-through;
 }
 
 /* Vista Mese: numeri centrati, giorno selezionato cerchiato, puntino sui giorni con eventi. */

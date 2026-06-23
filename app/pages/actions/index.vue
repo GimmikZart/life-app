@@ -1,3 +1,0 @@
-<template>
-  <ActionsManager />
-</template>
