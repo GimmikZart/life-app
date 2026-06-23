@@ -2,6 +2,7 @@ import { and, eq } from 'drizzle-orm'
 
 import { useDatabase } from '../../database/client'
 import { actions } from '../../database/schema'
+import { regenerateActionEvents } from '../../utils/action-event-generation'
 import { parseActionPayload } from '../../utils/action-validation'
 import { requireAuthenticatedUser } from '../../utils/auth'
 import { requireCalendarPermission } from '../../utils/calendar-access'
@@ -22,21 +23,34 @@ export default defineEventHandler(async (event) => {
   }
 
   const db = useDatabase()
-  const [action] = await db
-    .update(actions)
-    .set({
-      name: payload.name,
-      weight: payload.weight,
-      frequency: payload.frequency,
-      targetCalendarId: payload.targetCalendarId,
-      updatedAt: new Date()
-    })
-    .where(and(eq(actions.id, actionId), eq(actions.userId, currentUser.id)))
-    .returning()
+  const action = await db.transaction(async (tx) => {
+    const [updated] = await tx
+      .update(actions)
+      .set({
+        name: payload.name,
+        weight: payload.weight,
+        frequency: payload.frequency,
+        targetCalendarId: payload.targetCalendarId,
+        updatedAt: new Date()
+      })
+      .where(and(eq(actions.id, actionId), eq(actions.userId, currentUser.id)))
+      .returning()
 
-  if (!action) {
-    throw createError({ statusCode: 404, statusMessage: 'Action non trovata.' })
-  }
+    if (!updated) {
+      throw createError({ statusCode: 404, statusMessage: 'Action non trovata.' })
+    }
+
+    // Rigenera le occorrenze future (preservando quelle gia completate).
+    await regenerateActionEvents(tx, {
+      id: updated.id,
+      userId: currentUser.id,
+      name: payload.name,
+      frequency: payload.frequency,
+      targetCalendarId: payload.targetCalendarId
+    })
+
+    return updated
+  })
 
   return { action }
 })

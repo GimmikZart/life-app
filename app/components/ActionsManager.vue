@@ -5,6 +5,7 @@ type ActionFrequency = {
   type: FrequencyType
   time: string
   durationMinutes: number
+  timeZone: string
   daysOfWeek?: number[]
   dayOfMonth?: number
   date?: string
@@ -151,7 +152,9 @@ function toggleDay(day: number) {
 }
 
 function buildFrequency(): ActionFrequency {
-  const base = { time: form.time, durationMinutes: Number(form.durationMinutes) }
+  // La timezone serve al server per calcolare l'istante esatto delle occorrenze.
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Rome'
+  const base = { time: form.time, durationMinutes: Number(form.durationMinutes), timeZone }
 
   if (form.frequencyType === 'weekly') {
     return { type: 'weekly', daysOfWeek: [...form.daysOfWeek], ...base }

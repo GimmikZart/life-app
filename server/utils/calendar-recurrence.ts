@@ -37,6 +37,8 @@ export type CalendarEventForExpansion = {
   syncStatus?: 'synced' | 'pending' | 'error'
   syncError?: string | null
   association?: AssociationInfo | null
+  // Action Engine (3.3): valorizzato sugli eventi materializzati da una Action.
+  actionId?: string | null
 }
 
 export type CalendarEventOccurrence = {
@@ -59,6 +61,7 @@ export type CalendarEventOccurrence = {
   syncStatus: 'synced' | 'pending' | 'error'
   syncError: string | null
   association: AssociationInfo | null
+  actionId: string | null
 }
 
 export function expandCalendarEvents(
@@ -144,6 +147,7 @@ function toOccurrence(
     source: event.source ?? 'life_app',
     syncStatus: event.syncStatus ?? 'synced',
     syncError: event.syncError ?? null,
-    association: event.association ?? null
+    association: event.association ?? null,
+    actionId: event.actionId ?? null
   }
 }

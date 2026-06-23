@@ -12,28 +12,22 @@ export type ActionWeight = (typeof actionWeights)[number]
 export const actionFrequencyTypes = ['daily', 'weekly', 'monthly', 'specific_date'] as const
 export type ActionFrequencyType = (typeof actionFrequencyTypes)[number]
 
+// Campi comuni a tutte le frequenze. `time` e l'orario (wall-clock) dell'occorrenza,
+// `timeZone` e l'IANA timezone in cui interpretarlo (il Sotto-Ciclo 3.3 la usa per
+// calcolare l'istante UTC esatto di ogni evento generato, gestendo il DST).
+type ActionFrequencyBase = {
+  time: string
+  durationMinutes: number
+  timeZone: string
+}
+
 // daysOfWeek: 0 = domenica ... 6 = sabato (convenzione JS Date.getDay).
 // dayOfMonth: 1..31. date: 'YYYY-MM-DD'. time: 'HH:MM' (24h).
-export type ActionFrequency = {
-  type: 'daily'
-  time: string
-  durationMinutes: number
-} | {
-  type: 'weekly'
-  daysOfWeek: number[]
-  time: string
-  durationMinutes: number
-} | {
-  type: 'monthly'
-  dayOfMonth: number
-  time: string
-  durationMinutes: number
-} | {
-  type: 'specific_date'
-  date: string
-  time: string
-  durationMinutes: number
-}
+export type ActionFrequency =
+  | (ActionFrequencyBase & { type: 'daily' })
+  | (ActionFrequencyBase & { type: 'weekly'; daysOfWeek: number[] })
+  | (ActionFrequencyBase & { type: 'monthly'; dayOfMonth: number })
+  | (ActionFrequencyBase & { type: 'specific_date'; date: string })
 
 export type ActionPayload = {
   name: string
@@ -46,8 +40,27 @@ const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+const DEFAULT_TIME_ZONE = 'Europe/Rome'
+
 function badRequest(message: string): never {
   throw createError({ statusCode: 400, statusMessage: message })
+}
+
+function parseTimeZone(value: unknown): string {
+  if (typeof value !== 'string' || !value.trim()) {
+    return DEFAULT_TIME_ZONE
+  }
+
+  const candidate = value.trim()
+
+  try {
+    // Throws (RangeError) se la timezone IANA non e valida.
+    new Intl.DateTimeFormat('en-US', { timeZone: candidate })
+  } catch {
+    badRequest('Fuso orario non valido.')
+  }
+
+  return candidate
 }
 
 function parseTime(value: unknown): string {
@@ -80,11 +93,14 @@ function parseFrequency(raw: unknown): ActionFrequency {
     badRequest('Tipo di frequenza non valido.')
   }
 
-  const time = parseTime(value.time)
-  const durationMinutes = parseDuration(value.durationMinutes)
+  const base = {
+    time: parseTime(value.time),
+    durationMinutes: parseDuration(value.durationMinutes),
+    timeZone: parseTimeZone(value.timeZone)
+  }
 
   if (type === 'daily') {
-    return { type: 'daily', time, durationMinutes }
+    return { type: 'daily', ...base }
   }
 
   if (type === 'weekly') {
@@ -97,7 +113,7 @@ function parseFrequency(raw: unknown): ActionFrequency {
       badRequest('Seleziona almeno un giorno della settimana valido (0-6).')
     }
 
-    return { type: 'weekly', daysOfWeek: daysOfWeek.sort((a, b) => a - b), time, durationMinutes }
+    return { type: 'weekly', daysOfWeek: daysOfWeek.sort((a, b) => a - b), ...base }
   }
 
   if (type === 'monthly') {
@@ -107,7 +123,7 @@ function parseFrequency(raw: unknown): ActionFrequency {
       badRequest('Giorno del mese non valido (1-31).')
     }
 
-    return { type: 'monthly', dayOfMonth, time, durationMinutes }
+    return { type: 'monthly', dayOfMonth, ...base }
   }
 
   // specific_date
@@ -117,7 +133,7 @@ function parseFrequency(raw: unknown): ActionFrequency {
     badRequest('Data non valida (attesa YYYY-MM-DD).')
   }
 
-  return { type: 'specific_date', date, time, durationMinutes }
+  return { type: 'specific_date', date, ...base }
 }
 
 export function parseActionPayload(body: Record<string, unknown>): ActionPayload {

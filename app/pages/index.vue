@@ -11,6 +11,7 @@ type CalendarOccurrence = {
   endAt: string
   isRecurring: boolean
   visibilityDefault: 'clear' | 'busy' | 'hidden'
+  actionId?: string | null
   association?: { userId: string; name: string | null; color: string | null; icon: string | null } | null
 }
 
@@ -249,7 +250,10 @@ function readTodayCache() {
           </time>
           <span class="agenda-row__marker" aria-hidden="true" />
           <div class="agenda-row__content">
-            <strong><template v-if="occurrence.association?.icon">{{ occurrence.association.icon }} </template>{{ occurrence.title }}</strong>
+            <strong>
+              <template v-if="occurrence.association?.icon">{{ occurrence.association.icon }} </template>{{ occurrence.title }}
+              <span v-if="occurrence.actionId" class="agenda-row__tag">Action</span>
+            </strong>
             <span>{{ formatDuration(occurrence) }} - {{ occurrence.calendarName }}</span>
             <small v-if="occurrence.category">{{ occurrence.category }}</small>
           </div>
@@ -430,6 +434,20 @@ h1 {
 
 .agenda-row strong {
   overflow-wrap: anywhere;
+}
+
+.agenda-row__tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--color-accent);
+  color: #ffffff;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  vertical-align: middle;
 }
 
 .empty-state {

@@ -75,7 +75,8 @@ export default defineEventHandler(async (event) => {
       visibilityDefault: calendarEvents.visibilityDefault,
       source: calendarEvents.source,
       syncStatus: calendarEvents.syncStatus,
-      syncError: calendarEvents.syncError
+      syncError: calendarEvents.syncError,
+      actionId: calendarEvents.actionId
     })
     .from(calendarEvents)
     .innerJoin(calendars, eq(calendars.id, calendarEvents.calendarId))
