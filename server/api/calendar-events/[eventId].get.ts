@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm'
 
 import { useDatabase } from '../../database/client'
-import { calendarEvents, eventAssociations, users } from '../../database/schema'
+import { calendarEvents, eventAssociations, eventObjectives, users } from '../../database/schema'
 import { requireAuthenticatedUser } from '../../utils/auth'
 import { getCalendarMembership } from '../../utils/calendar-access'
 
@@ -53,6 +53,12 @@ export default defineEventHandler(async (event) => {
     .where(eq(eventAssociations.eventId, eventId))
     .limit(1)
 
+  // Obiettivi collegati a questo evento (per precompilare il form — Ciclo 4.2).
+  const objectiveLinks = await db
+    .select({ objectiveId: eventObjectives.objectiveId })
+    .from(eventObjectives)
+    .where(eq(eventObjectives.calendarEventId, eventId))
+
   return {
     event: {
       id: row.id,
@@ -64,6 +70,7 @@ export default defineEventHandler(async (event) => {
       isRecurring: row.isRecurring,
       recurrenceRule: row.recurrenceRule,
       visibilityDefault: row.visibilityDefault,
+      objectiveIds: objectiveLinks.map((link) => link.objectiveId),
       association: association
         ? {
             userId: association.associatedUserId,

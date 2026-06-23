@@ -21,11 +21,15 @@ type LoadedEvent = {
   isRecurring: boolean
   recurrenceRule: string | null
   visibilityDefault: EventVisibility
+  objectiveIds?: string[]
   association: { userId: string; name: string | null; color: string | null; icon: string | null } | null
 }
 
 type Connection = { targetUserId: string; targetEmail: string; targetName: string | null }
 type RelationshipsResponse = { connections: Connection[]; incomingRequests: unknown[]; outgoingRequests: unknown[] }
+
+type ObjectiveOption = { id: string; title: string }
+type ObjectivesResponse = { objectives: ObjectiveOption[] }
 
 const iconOptions = ['', '❤️', '👤', '👥', '💼', '🎉', '🏠', '🍽️']
 
@@ -64,6 +68,12 @@ const { data: relationshipData } = await useFetch<RelationshipsResponse>('/api/r
 })
 const connections = computed(() => relationshipData.value?.connections ?? [])
 
+// Obiettivi dell'utente: associare un evento a un obiettivo lo rende un'Action.
+const { data: objectivesData } = await useFetch<ObjectivesResponse>('/api/objectives', {
+  default: () => ({ objectives: [] })
+})
+const objectiveOptions = computed(() => objectivesData.value?.objectives ?? [])
+
 const writableCalendars = computed(() =>
   props.calendars.filter((calendar) => calendar.myPermission === 'owner' || calendar.myPermission === 'editor')
 )
@@ -82,10 +92,13 @@ const eventForm = reactive({
   recurrenceUntil: '',
   associatedUserId: '',
   associatedColor: '#db2777',
-  associatedIcon: ''
+  associatedIcon: '',
+  objectiveIds: [] as string[]
 })
 // Contatto associato presente al caricamento (per sapere se va rimosso al salvataggio).
 const loadedAssociatedUserId = ref('')
+// Obiettivi collegati al caricamento (per riconciliare i link al salvataggio).
+const loadedObjectiveIds = ref<string[]>([])
 
 const route = useRoute()
 const editId = typeof route.query.eventId === 'string' ? route.query.eventId : ''
@@ -167,7 +180,9 @@ function resetEventForm() {
   eventForm.associatedUserId = ''
   eventForm.associatedColor = '#db2777'
   eventForm.associatedIcon = ''
+  eventForm.objectiveIds = []
   loadedAssociatedUserId.value = ''
+  loadedObjectiveIds.value = []
 }
 
 function applyLoadedEvent(event: LoadedEvent) {
@@ -182,7 +197,19 @@ function applyLoadedEvent(event: LoadedEvent) {
   eventForm.associatedColor = event.association?.color ?? '#db2777'
   eventForm.associatedIcon = event.association?.icon ?? ''
   loadedAssociatedUserId.value = event.association?.userId ?? ''
+  eventForm.objectiveIds = [...(event.objectiveIds ?? [])]
+  loadedObjectiveIds.value = [...(event.objectiveIds ?? [])]
   applyRecurrenceFromRule(event.isRecurring ? event.recurrenceRule : null)
+}
+
+function toggleObjective(objectiveId: string) {
+  const index = eventForm.objectiveIds.indexOf(objectiveId)
+
+  if (index === -1) {
+    eventForm.objectiveIds.push(objectiveId)
+  } else {
+    eventForm.objectiveIds.splice(index, 1)
+  }
 }
 
 async function saveEvent() {
@@ -202,6 +229,8 @@ async function saveEvent() {
   const associatedColor = eventForm.associatedColor
   const associatedIcon = eventForm.associatedIcon
   const previousAssociated = loadedAssociatedUserId.value
+  const desiredObjectiveIds = [...eventForm.objectiveIds]
+  const previousObjectiveIds = [...loadedObjectiveIds.value]
 
   const scope = showScopeChoice.value ? editScope.value : 'all'
 
@@ -238,6 +267,18 @@ async function saveEvent() {
       }
     } else if (previousAssociated) {
       await $fetch(`/api/event-associations/${eventId}/${previousAssociated}` as string, { method: 'DELETE' })
+    }
+
+    // Riconcilia gli obiettivi collegati (un evento associato a un obiettivo e un'Action).
+    for (const objectiveId of desiredObjectiveIds) {
+      if (!previousObjectiveIds.includes(objectiveId)) {
+        await $fetch('/api/event-objectives', { method: 'POST', body: { calendarEventId: eventId, objectiveId } })
+      }
+    }
+    for (const objectiveId of previousObjectiveIds) {
+      if (!desiredObjectiveIds.includes(objectiveId)) {
+        await $fetch('/api/event-objectives' as string, { method: 'DELETE', body: { calendarEventId: eventId, objectiveId } })
+      }
     }
 
   }, wasEditing ? 'Evento aggiornato.' : 'Evento creato.')
@@ -465,6 +506,18 @@ function roundToNextHour(date: Date) {
           </label>
         </div>
 
+        <fieldset v-if="objectiveOptions.length" class="objectives-choice">
+          <legend>Obiettivi collegati (rende l'evento un'Action)</legend>
+          <label v-for="objective in objectiveOptions" :key="objective.id" class="objective-option">
+            <input
+              type="checkbox"
+              :checked="eventForm.objectiveIds.includes(objective.id)"
+              @change="toggleObjective(objective.id)"
+            >
+            {{ objective.title }}
+          </label>
+        </fieldset>
+
         <fieldset v-if="showScopeChoice" class="scope-choice">
           <legend>Applica la modifica a</legend>
           <label><input v-model="editScope" type="radio" value="single"> Solo questo evento</label>
@@ -571,7 +624,8 @@ select {
   gap: 8px;
 }
 
-.scope-choice {
+.scope-choice,
+.objectives-choice {
   display: grid;
   gap: 8px;
   margin: 4px 0 4px;
@@ -580,6 +634,7 @@ select {
   border-radius: 10px;
 }
 
+.objectives-choice legend,
 .scope-choice legend {
   padding: 0 6px;
   color: var(--color-muted);
@@ -588,7 +643,8 @@ select {
   text-transform: uppercase;
 }
 
-.scope-choice label {
+.scope-choice label,
+.objective-option {
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -596,9 +652,17 @@ select {
   font-weight: 800;
 }
 
-.scope-choice input {
+.scope-choice input,
+.objective-option input {
   width: 18px;
   height: 18px;
+  min-height: auto;
+}
+
+@media (min-width: 760px) {
+  .objectives-choice {
+    grid-column: 1 / -1;
+  }
 }
 
 .feedback {
