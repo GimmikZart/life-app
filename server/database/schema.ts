@@ -1,3 +1,6 @@
 export * from './schema/users'
 export * from './schema/calendar'
+export * from './schema/objectives'
+export * from './schema/skills'
+export * from './schema/badges'
 export * from './schema/rooms'

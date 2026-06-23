@@ -165,8 +165,10 @@ export const calendarEvents = pgTable(
     syncError: text('sync_error'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-    // Ciclo 3 colleghera questo campo a actions.id con una foreign key reale.
-    actionId: uuid('action_id')
+    // Peso dell'impegno quando l'evento e un'Action (associato a skill/obiettivi):
+    // 1 routine leggera, 2 impegno medio, 3 sforzo significativo. Usato nel calcolo
+    // punti (Ciclo 4). Vincolo IN (1,2,3) applicato con un CHECK nella migrazione.
+    weight: integer('weight').notNull().default(1)
   },
   (table) => [
     index('calendar_events_calendar_start_idx').on(table.calendarId, table.startAt),
